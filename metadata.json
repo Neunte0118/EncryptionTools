@@ -1,0 +1,6 @@
+{
+  "name": "Local Crypto Vault & Signature Studio",
+  "description": "ブラウザの標準Web Crypto APIのみを用いた、完全ローカルの署名検証・ハッシュ計算・RSA/ECC暗号化および単一ファイル鍵管理ツール",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

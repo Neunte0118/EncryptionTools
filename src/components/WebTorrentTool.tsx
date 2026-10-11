@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { loadWebTorrent, PUBLIC_TRACKERS, formatBytes, formatSpeed } from '../utils/webtorrentLoader';
+import { TorrentIPChecker } from './TorrentIPChecker';
 import {
   Share2,
   Download,
@@ -388,6 +389,9 @@ export function WebTorrentTool() {
           </div>
         </div>
       </div>
+
+      {/* Real-time Torrent IP & WebRTC VPN Diagnostic Checker */}
+      <TorrentIPChecker compact={true} />
 
       {/* Initialization Status */}
       {isInitializing && (

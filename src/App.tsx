@@ -9,6 +9,7 @@ import { KeyGeneratorTool } from './components/KeyGeneratorTool';
 import { RandomGeneratorTool } from './components/RandomGeneratorTool';
 import { P2PCommunicationTool } from './components/P2PCommunicationTool';
 import { WebTorrentTool } from './components/WebTorrentTool';
+import { TorrentIPChecker } from './components/TorrentIPChecker';
 import {
   FolderKey,
   FileSignature,
@@ -19,9 +20,10 @@ import {
   Dices,
   Radio,
   Share2,
+  ShieldCheck,
 } from 'lucide-react';
 
-type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator' | 'random' | 'p2p' | 'torrent';
+type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator' | 'random' | 'p2p' | 'torrent' | 'ip-checker';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('vault');
@@ -167,6 +169,18 @@ export default function App() {
                 <Share2 className="w-4 h-4" />
                 <span>WebTorrent (P2P分散共有)</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('ip-checker')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                  activeTab === 'ip-checker'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                <span>VPN・Torrent IP診断</span>
+              </button>
             </nav>
           </div>
         </div>
@@ -228,6 +242,8 @@ export default function App() {
         )}
 
         {activeTab === 'torrent' && <WebTorrentTool />}
+
+        {activeTab === 'ip-checker' && <TorrentIPChecker />}
       </main>
 
       {/* Footer */}

@@ -1327,7 +1327,7 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
       {activeTab === 'math' && (
         <div className="space-y-6">
           {/* Conceptual intro cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
               <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
                 <Shield className="w-4 h-4" />
@@ -1355,6 +1355,16 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
               </div>
               <p className="text-xs text-slate-400 leading-relaxed">
                 実数計算の丸め誤差や桁肥大を防ぐため、AESと同じガロア体 GF(256) 上で演算します。各シェアのサイズは元の秘密と完全に同一（1倍）を維持します。
+              </p>
+            </div>
+
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
+                <Lock className="w-4 h-4" />
+                <span>4. 外部暗号ライブラリ不使用</span>
+              </div>
+              <p className="text-xs text-slate-400 leading-relaxed">
+                GF(256)演算、多項式生成、ラグランジュ補間、CRC32整合性検査まですべてPure TypeScriptで自前実装しています（※QRコード描画のみ qrcode ライブラリを使用）。
               </p>
             </div>
           </div>

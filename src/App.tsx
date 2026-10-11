@@ -7,6 +7,7 @@ import { HashTool } from './components/HashTool';
 import { EncryptionTool } from './components/EncryptionTool';
 import { KeyGeneratorTool } from './components/KeyGeneratorTool';
 import { RandomGeneratorTool } from './components/RandomGeneratorTool';
+import { P2PCommunicationTool } from './components/P2PCommunicationTool';
 import {
   FolderKey,
   FileSignature,
@@ -15,9 +16,10 @@ import {
   PlusCircle,
   Binary,
   Dices,
+  Radio,
 } from 'lucide-react';
 
-type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator' | 'random';
+type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator' | 'random' | 'p2p';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('vault');
@@ -139,6 +141,18 @@ export default function App() {
                 <Dices className="w-4 h-4" />
                 <span>乱数・UUID生成</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('p2p')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                  activeTab === 'p2p'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Radio className="w-4 h-4" />
+                <span>P2P通信 (方式A)</span>
+              </button>
             </nav>
           </div>
         </div>
@@ -191,6 +205,13 @@ export default function App() {
         )}
 
         {activeTab === 'random' && <RandomGeneratorTool />}
+
+        {activeTab === 'p2p' && (
+          <P2PCommunicationTool
+            vault={vault}
+            onVaultChange={handleVaultChange}
+          />
+        )}
       </main>
 
       {/* Footer */}

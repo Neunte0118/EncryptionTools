@@ -1,12 +1,18 @@
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import {fileURLToPath} from 'url';
 import {defineConfig} from 'vite';
 import {VitePWA} from 'vite-plugin-pwa';
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const BASE_URL = process.env.VITE_BASE_PATH || '/EncryptionTools/';
+
 export default defineConfig(() => {
   return {
-    base: '/',
+    base: BASE_URL,
     plugins: [
       react(),
       tailwindcss(),
@@ -15,7 +21,7 @@ export default defineConfig(() => {
         injectRegister: 'auto',
         includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'icon.svg'],
         manifest: {
-          id: '/',
+          id: BASE_URL,
           name: 'Local Crypto Vault & Signature Studio',
           short_name: 'CryptoVault',
           description: 'ブラウザの標準Web Crypto APIのみを用いた、完全ローカルの署名検証・ハッシュ計算・RSA/ECC暗号化および単一ファイル鍵管理ツール',
@@ -23,23 +29,23 @@ export default defineConfig(() => {
           background_color: '#020617',
           display: 'standalone',
           orientation: 'any',
-          start_url: '/',
-          scope: '/',
+          start_url: BASE_URL,
+          scope: BASE_URL,
           icons: [
             {
-              src: '/pwa-192x192.png',
+              src: `${BASE_URL}pwa-192x192.png`,
               sizes: '192x192',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-512x512.png',
+              src: `${BASE_URL}pwa-512x512.png`,
               sizes: '512x512',
               type: 'image/png',
               purpose: 'any',
             },
             {
-              src: '/pwa-maskable-512x512.png',
+              src: `${BASE_URL}pwa-maskable-512x512.png`,
               sizes: '512x512',
               type: 'image/png',
               purpose: 'maskable',

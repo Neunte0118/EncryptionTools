@@ -13,6 +13,7 @@ import { TorrentIPChecker } from './components/TorrentIPChecker';
 import { FileMetadataTool } from './components/FileMetadataTool';
 import { GzipCompressionTool } from './components/GzipCompressionTool';
 import { SteganographyTool } from './components/SteganographyTool';
+import { ShamirSecretSharingTool } from './components/ShamirSecretSharingTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -35,6 +36,7 @@ import {
   Tag,
   FileArchive,
   Eye,
+  Split,
 } from 'lucide-react';
 
 type Tab =
@@ -42,6 +44,7 @@ type Tab =
   | 'signatures'
   | 'hashes'
   | 'encryption'
+  | 'shamir'
   | 'steganography'
   | 'metadata'
   | 'gzip'
@@ -172,13 +175,20 @@ export default function App() {
       category: 'crypto',
     },
     {
+      id: 'shamir',
+      title: 'シャミアの秘密分散法',
+      shortTitle: '秘密分散法',
+      description: '(k, n) 閾値法による秘密分割 & 復元 (完全秘匿・情報理論的安全)',
+      icon: Split,
+      category: 'crypto',
+    },
+    {
       id: 'steganography',
       title: '画像ステガノグラフィ',
       shortTitle: 'ステガノ',
       description: '画像ピクセル(LSB)へのデータ不可視埋め込み・AES暗号化抽出',
       icon: Eye,
       category: 'crypto',
-      badge: 'NEW',
     },
     {
       id: 'metadata',
@@ -187,7 +197,6 @@ export default function App() {
       description: '画像(Exif/GPS)・音声(ID3 & カバー)・動画・PDFの編集と完全削除',
       icon: Tag,
       category: 'crypto',
-      badge: 'NEW',
     },
     {
       id: 'gzip',
@@ -454,6 +463,20 @@ export default function App() {
           )}
 
           {activeTab === 'hashes' && <HashTool />}
+
+          {activeTab === 'shamir' && (
+            <ShamirSecretSharingTool
+              vault={vault}
+              onImportToVault={(keyItem) => {
+                const updatedVault: KeyVaultFile = {
+                  ...vault,
+                  keys: [keyItem, ...vault.keys],
+                  exportedAt: new Date().toISOString(),
+                };
+                handleVaultChange(updatedVault);
+              }}
+            />
+          )}
 
           {activeTab === 'steganography' && <SteganographyTool />}
 

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#1e1b4b"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#6366f1"/>
+    </linearGradient>
+    <linearGradient id="glowGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background with subtle rounded shape -->
+  <rect width="512" height="512" rx="112" fill="url(#bgGrad)"/>
+  <rect width="512" height="256" rx="112" fill="url(#glowGrad)"/>
+
+  <!-- Shield Shape -->
+  <path d="M 256 96 L 396 156 C 396 280 340 376 256 416 C 172 376 116 280 116 156 Z" 
+        fill="url(#shieldGrad)" 
+        stroke="#c7d2fe" 
+        stroke-width="12" 
+        stroke-linejoin="round"/>
+
+  <!-- Lock Body -->
+  <rect x="196" y="236" width="120" height="100" rx="18" fill="#ffffff" />
+  
+  <!-- Lock Shackle -->
+  <path d="M 220 236 V 196 C 220 176 236 160 256 160 C 276 160 292 176 292 196 V 236" 
+        fill="none" 
+        stroke="#ffffff" 
+        stroke-width="18" 
+        stroke-linecap="round"/>
+
+  <!-- Keyhole -->
+  <circle cx="256" cy="276" r="14" fill="#4f46e5" />
+  <path d="M 252 276 L 248 310 L 264 310 L 260 276 Z" fill="#4f46e5" />
+</svg>

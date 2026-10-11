@@ -11,6 +11,9 @@ import { P2PCommunicationTool } from './components/P2PCommunicationTool';
 import { WebTorrentTool } from './components/WebTorrentTool';
 import { TorrentIPChecker } from './components/TorrentIPChecker';
 import { FileMetadataTool } from './components/FileMetadataTool';
+import { GzipCompressionTool } from './components/GzipCompressionTool';
+import { PWAInstallButton } from './components/PWAInstallButton';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import {
   FolderKey,
   FileSignature,
@@ -29,6 +32,7 @@ import {
   Layers,
   Sparkles,
   Tag,
+  FileArchive,
 } from 'lucide-react';
 
 type Tab =
@@ -37,6 +41,7 @@ type Tab =
   | 'hashes'
   | 'encryption'
   | 'metadata'
+  | 'gzip'
   | 'generator'
   | 'random'
   | 'p2p'
@@ -171,6 +176,15 @@ export default function App() {
       icon: Tag,
       category: 'crypto',
       badge: 'NEW',
+    },
+    {
+      id: 'gzip',
+      title: 'Gzip 圧縮・解凍',
+      shortTitle: 'Gzip圧縮',
+      description: '標準Web API (CompressionStream) による完全ローカル高速圧縮',
+      icon: FileArchive,
+      category: 'crypto',
+      badge: '標準API',
     },
     {
       id: 'p2p',
@@ -310,6 +324,9 @@ export default function App() {
 
             {/* Right: Security Indicator & Quick Vault Key Count */}
             <div className="flex items-center gap-2 sm:gap-3">
+              {/* PWA Install Button */}
+              <PWAInstallButton variant="header" />
+
               <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium px-2 py-1 rounded bg-emerald-950/40 border border-emerald-800/40">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                 <span>完全ローカル (オフライン安全)</span>
@@ -424,6 +441,8 @@ export default function App() {
 
           {activeTab === 'metadata' && <FileMetadataTool />}
 
+          {activeTab === 'gzip' && <GzipCompressionTool />}
+
           {activeTab === 'encryption' && (
             <EncryptionTool
               vault={vault}
@@ -528,16 +547,23 @@ export default function App() {
         </div>
 
         {/* Drawer Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/60 text-xs text-slate-400 space-y-1">
-          <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-            100% Client-Side WebCrypto
+        <div className="p-4 border-t border-slate-800 bg-slate-950/60 text-xs text-slate-400 space-y-3">
+          <PWAInstallButton variant="drawer" />
+
+          <div className="space-y-1">
+            <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium">
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              100% Client-Side WebCrypto
+            </div>
+            <p className="text-[10px] text-slate-500">
+              秘密鍵・平文データは外部サーバーに一切送信されません。
+            </p>
           </div>
-          <p className="text-[10px] text-slate-500">
-            秘密鍵・平文データは外部サーバーに一切送信されません。
-          </p>
         </div>
       </aside>
+
+      {/* Offline Mode Alert */}
+      <OfflineIndicator />
 
       {/* Footer */}
       <footer className="border-t border-slate-900 py-3 text-center text-xs text-slate-500 px-4">

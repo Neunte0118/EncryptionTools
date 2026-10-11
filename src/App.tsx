@@ -6,6 +6,7 @@ import { SignatureTool } from './components/SignatureTool';
 import { HashTool } from './components/HashTool';
 import { EncryptionTool } from './components/EncryptionTool';
 import { KeyGeneratorTool } from './components/KeyGeneratorTool';
+import { RandomGeneratorTool } from './components/RandomGeneratorTool';
 import {
   FolderKey,
   FileSignature,
@@ -13,9 +14,10 @@ import {
   Lock,
   PlusCircle,
   Binary,
+  Dices,
 } from 'lucide-react';
 
-type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator';
+type Tab = 'vault' | 'signatures' | 'hashes' | 'encryption' | 'generator' | 'random';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('vault');
@@ -125,6 +127,18 @@ export default function App() {
                 <PlusCircle className="w-4 h-4" />
                 <span>鍵ペア生成</span>
               </button>
+
+              <button
+                onClick={() => setActiveTab('random')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md font-medium transition-colors ${
+                  activeTab === 'random'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                }`}
+              >
+                <Dices className="w-4 h-4" />
+                <span>乱数・UUID生成</span>
+              </button>
             </nav>
           </div>
         </div>
@@ -175,6 +189,8 @@ export default function App() {
             onNavigateToVault={() => setActiveTab('vault')}
           />
         )}
+
+        {activeTab === 'random' && <RandomGeneratorTool />}
       </main>
 
       {/* Footer */}

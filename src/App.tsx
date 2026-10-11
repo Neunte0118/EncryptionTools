@@ -382,6 +382,10 @@ export default function App() {
               {renderNavGroup('vault', '鍵管理 & 生成')}
               {renderNavGroup('crypto', '暗号化 & デジタル署名')}
               {renderNavGroup('p2p', 'P2P 分散通信 & 診断')}
+
+              <div className="pt-2 border-t border-slate-800/80">
+                <PWAInstallButton variant="sidebar" />
+              </div>
             </div>
 
             {/* Sidebar Bottom Status */}

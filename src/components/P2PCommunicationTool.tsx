@@ -134,6 +134,11 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const dataChannelRef = useRef<RTCDataChannel | null>(null);
   const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
+  const roleRef = useRef<'host' | 'join'>('host');
+
+  useEffect(() => {
+    roleRef.current = role;
+  }, [role]);
 
   // Receiving files buffer in-progress
   const activeReceivingFilesRef = useRef<{ [id: string]: ReceivedFile }>({});
@@ -192,16 +197,46 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
     pcRef.current = pc;
 
     pc.oniceconnectionstatechange = () => {
-      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
-        setConnectionStatus('connected');
-        setStatusMessage('P2P 接続確立 (WebRTC DataChannel 稼働中)');
+      const iceState = pc.iceConnectionState;
+      if (iceState === 'connected' || iceState === 'completed') {
+        // Only mark connected if RTCDataChannel is actually open!
+        // In WebRTC, ICE can become connected on the joiner before host receives/applies the answer,
+        // but RTCDataChannel cannot transmit data until DTLS & SCTP handshake finishes.
+        if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+          setConnectionStatus('connected');
+          setStatusMessage('P2P 接続確立 (WebRTC DataChannel 稼働中)');
+        } else {
+          if (roleRef.current === 'join') {
+            setStatusMessage('ICE通信準備完了。生成された応答コード(Answer)をホストに渡してください');
+          } else {
+            setStatusMessage('ICE疎通完了。暗号化データチャンネル確立待機中...');
+          }
+        }
       } else if (
-        pc.iceConnectionState === 'disconnected' ||
-        pc.iceConnectionState === 'failed' ||
-        pc.iceConnectionState === 'closed'
+        iceState === 'disconnected' ||
+        iceState === 'failed' ||
+        iceState === 'closed'
       ) {
+        if (!dataChannelRef.current || dataChannelRef.current.readyState !== 'open') {
+          setConnectionStatus('disconnected');
+          setStatusMessage(`接続終了 (${iceState})`);
+        }
+      }
+    };
+
+    pc.onconnectionstatechange = () => {
+      const connState = pc.connectionState;
+      if (connState === 'connected') {
+        if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+          setConnectionStatus('connected');
+          setStatusMessage('P2P 接続確立 (WebRTC DataChannel 稼働中)');
+        }
+      } else if (connState === 'failed') {
+        setConnectionStatus('error');
+        setStatusMessage('WebRTC 接続に失敗しました (STUN・ネットワーク設定をご確認ください)');
+      } else if (connState === 'disconnected' || connState === 'closed') {
         setConnectionStatus('disconnected');
-        setStatusMessage(`接続終了 (${pc.iceConnectionState})`);
+        setStatusMessage(`接続終了 (${connState})`);
       }
     };
 
@@ -233,10 +268,15 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
   const setupDataChannelEvents = (dc: RTCDataChannel) => {
     dataChannelRef.current = dc;
 
-    dc.onopen = () => {
+    const handleOpen = () => {
       setConnectionStatus('connected');
       setStatusMessage('P2P 暗号化データチャンネル確立 (通信可能)');
     };
+
+    dc.onopen = handleOpen;
+    if (dc.readyState === 'open') {
+      handleOpen();
+    }
 
     dc.onclose = () => {
       setConnectionStatus('disconnected');
@@ -317,6 +357,13 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
         offerDesc = JSON.parse(remoteSignalText.trim());
       }
 
+      if (offerDesc.type && offerDesc.type !== 'offer') {
+        setIsGatheringIce(false);
+        alert(`入力されたコードの種別が "${offerDesc.type}" です。ホスト側で「接続コード (Offer) を生成」したコードを入力してください。`);
+        setStatusMessage(`エラー: 入力されたコードは ${offerDesc.type} です。ホストの Offer を入力してください`);
+        return;
+      }
+
       await pc.setRemoteDescription(offerDesc);
 
       const answer = await pc.createAnswer();
@@ -330,7 +377,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
       if (fullAnswer) {
         const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(fullAnswer))));
         setLocalSignalText(encoded);
-        setStatusMessage('Answer 生成完了。ホストに応答コードを渡してください');
+        setStatusMessage('Answer 生成完了。ホストに応答コードを渡してください (ホストの承認待ち)');
       }
     } catch (err: any) {
       setIsGatheringIce(false);
@@ -360,8 +407,19 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
         answerDesc = JSON.parse(remoteSignalText.trim());
       }
 
+      if (answerDesc.type && answerDesc.type !== 'answer') {
+        alert(`入力されたコードの種別が "${answerDesc.type}" です。ゲスト側で「応答コード (Answer) を生成」したコードを入力してください。`);
+        setStatusMessage(`エラー: 入力されたコードは ${answerDesc.type} です。ゲストの Answer を入力してください`);
+        return;
+      }
+
       await pcRef.current.setRemoteDescription(answerDesc);
-      setStatusMessage('相手のAnswerを適用しました。ICE接続待機中...');
+      setStatusMessage('相手のAnswerを適用しました。暗号化データチャンネル確立待機中...');
+
+      if (dataChannelRef.current && dataChannelRef.current.readyState === 'open') {
+        setConnectionStatus('connected');
+        setStatusMessage('P2P 暗号化データチャンネル確立 (通信可能)');
+      }
     } catch (err: any) {
       setStatusMessage(`Answer適用エラー: ${err?.message || err}`);
     }
@@ -749,7 +807,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
       </div>
 
       {/* Mode Switcher */}
-      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-1.5 flex gap-2">
+      <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-1.5 flex flex-col sm:flex-row gap-2">
         <button
           onClick={() => {
             setConnectMode('webrtc');
@@ -761,7 +819,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Layers className="w-4 h-4" />
+          <Layers className="w-4 h-4 shrink-0" />
           <span>方式A: WebRTC 手動シグナリング (別PC・別端末間 / サーバーゼロ)</span>
         </button>
 
@@ -776,18 +834,18 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
               : 'text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Laptop className="w-4 h-4" />
+          <Laptop className="w-4 h-4 shrink-0" />
           <span>同一端末テスト (BroadcastChannel / 別タブとワンクリック接続)</span>
         </button>
       </div>
 
       {/* Connection Setup Card (When not connected) */}
       {connectionStatus !== 'connected' && (
-        <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-5 space-y-5">
+        <div className="bg-slate-900/80 border border-slate-800 rounded-lg p-4 sm:p-5 space-y-5">
           {connectMode === 'webrtc' ? (
             <>
               {/* WebRTC Role Select */}
-              <div className="flex items-center justify-between border-b border-slate-800/80 pb-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800/80 pb-4 gap-3">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                     <Radio className="w-4 h-4 text-indigo-400" />
@@ -798,10 +856,10 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="grid grid-cols-2 sm:flex items-center gap-2 w-full sm:w-auto">
                   <button
                     onClick={() => setRole('host')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors text-center ${
                       role === 'host'
                         ? 'bg-indigo-600 text-white'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -811,7 +869,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                   </button>
                   <button
                     onClick={() => setRole('join')}
-                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors ${
+                    className={`px-3 py-1.5 rounded text-xs font-medium transition-colors text-center ${
                       role === 'join'
                         ? 'bg-indigo-600 text-white'
                         : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
@@ -823,19 +881,21 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
               </div>
 
               {/* STUN Configuration Option */}
-              <div className="flex items-center justify-between bg-slate-950/60 p-3 rounded border border-slate-800/60 text-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-slate-950/60 p-3 rounded border border-slate-800/60 text-xs gap-2">
                 <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-indigo-400" />
-                  <span className="text-slate-300 font-medium">STUN サーバー設定:</span>
-                  <span className="text-slate-400">
-                    {useStun
-                      ? '標準 STUN (Google) 有効 (NAT/ルーター越え対応)'
-                      : 'STUN 無効 (完全オフライン / 同一LAN・エアギャップ環境専用)'}
-                  </span>
+                  <ShieldCheck className="w-4 h-4 text-indigo-400 shrink-0" />
+                  <div>
+                    <span className="text-slate-300 font-medium">STUN サーバー設定: </span>
+                    <span className="text-slate-400">
+                      {useStun
+                        ? '標準 STUN (Google) 有効 (NAT/ルーター越え対応)'
+                        : 'STUN 無効 (完全オフライン / 同一LAN・エアギャップ環境専用)'}
+                    </span>
+                  </div>
                 </div>
                 <button
                   onClick={() => setUseStun(!useStun)}
-                  className="text-indigo-400 hover:text-indigo-300 underline font-medium"
+                  className="text-indigo-400 hover:text-indigo-300 underline font-medium self-end sm:self-auto shrink-0"
                 >
                   {useStun ? 'STUN を無効化する' : 'STUN を有効化する'}
                 </button>
@@ -879,7 +939,23 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                           <span>
                             生成された接続コード (これを相手にチャット等で送ってください):
                           </span>
-                          <span className="text-[11px] text-indigo-400">クリックでコピー可能</span>
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(localSignalText, 'host-offer')}
+                            className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                          >
+                            {copiedField === 'host-offer' ? (
+                              <>
+                                <Check className="w-3.5 h-3.5" />
+                                コピー完了！
+                              </>
+                            ) : (
+                              <>
+                                <Copy className="w-3.5 h-3.5" />
+                                接続コードをコピー
+                              </>
+                            )}
+                          </button>
                         </div>
                         <div
                           onClick={() => handleCopy(localSignalText, 'host-offer')}
@@ -972,12 +1048,32 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
 
                   {/* Step 2: Show Answer to copy */}
                   {localSignalText && (
-                    <div className="bg-slate-950/70 p-4 rounded-lg border border-slate-800/70 space-y-3">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
-                        <span className="w-5 h-5 rounded-full bg-indigo-900/80 text-indigo-300 flex items-center justify-center text-[11px]">
-                          2
-                        </span>
-                        生成された応答コード (ホストに返信してください)
+                    <div className="bg-slate-950/70 p-4 rounded-lg border border-indigo-900/40 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-xs font-semibold text-indigo-300">
+                          <span className="w-5 h-5 rounded-full bg-indigo-900/80 text-indigo-300 flex items-center justify-center text-[11px]">
+                            2
+                          </span>
+                          生成された応答コード (ホストに返信してください)
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(localSignalText, 'join-answer')}
+                          className="px-2.5 py-1 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium flex items-center gap-1.5 transition-colors shadow-sm"
+                        >
+                          {copiedField === 'join-answer' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              コピー完了！
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              応答コードをコピー
+                            </>
+                          )}
+                        </button>
                       </div>
 
                       <div
@@ -994,9 +1090,15 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         </div>
                       </div>
 
-                      <p className="text-xs text-slate-400">
-                        ホストがこの応答コードを貼り付けて接続完了すると、自動的に通信可能状態になります。
-                      </p>
+                      <div className="flex items-start gap-2.5 bg-amber-950/30 border border-amber-800/40 rounded p-3 text-xs text-amber-300">
+                        <RefreshCw className="w-4 h-4 animate-spin text-amber-400 mt-0.5 shrink-0" />
+                        <div>
+                          <p className="font-semibold">ホストの接続承認を待機中...</p>
+                          <p className="text-[11px] text-amber-200/80 mt-0.5">
+                            上の応答コードをコピーしてホスト（相手）に渡してください。ホストがこのコードを貼り付けて「接続を完了する」を実行すると、この画面は自動的に暗号化チャット・転送画面へ切り替わります。
+                          </p>
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1041,17 +1143,17 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
       {connectionStatus === 'connected' && (
         <div className="space-y-4">
           {/* Sub Navigation */}
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-2 gap-2">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full">
               <button
                 onClick={() => setActiveTab('chat')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                   activeTab === 'chat'
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
-                <FileText className="w-3.5 h-3.5" />
+                <FileText className="w-3.5 h-3.5 shrink-0" />
                 <span>P2P チャット &amp; 署名付き通信</span>
                 {messages.length > 0 && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/60 text-slate-300">
@@ -1062,13 +1164,13 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
 
               <button
                 onClick={() => setActiveTab('file')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                   activeTab === 'file'
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download className="w-3.5 h-3.5 shrink-0" />
                 <span>P2P ファイル直接転送</span>
                 {receivedFiles.length > 0 && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-slate-950/60 text-slate-300">
@@ -1079,13 +1181,13 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
 
               <button
                 onClick={() => setActiveTab('keys')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors flex items-center gap-1.5 shrink-0 ${
                   activeTab === 'keys'
                     ? 'bg-indigo-600 text-white'
                     : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                 }`}
               >
-                <Key className="w-3.5 h-3.5" />
+                <Key className="w-3.5 h-3.5 shrink-0" />
                 <span>公開鍵の直接交換 (Vault連携)</span>
                 {receivedSharedKeys.length > 0 && (
                   <span className="ml-1 px-1.5 py-0.2 rounded-full text-[10px] bg-emerald-950 text-emerald-400 border border-emerald-800/60">
@@ -1095,7 +1197,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
               </button>
             </div>
 
-            <div className="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
+            <div className="text-xs text-emerald-400 font-mono flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
               E2E Direct Link Active
             </div>

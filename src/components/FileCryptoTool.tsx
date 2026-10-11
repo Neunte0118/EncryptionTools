@@ -330,20 +330,20 @@ export const FileCryptoTool: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       {/* Top Tabs: Encrypt File / Decrypt File */}
-      <div className="flex border-b border-slate-800">
+      <div className="flex border-b border-slate-800 overflow-x-auto">
         <button
           onClick={() => {
             setTab('encrypt');
             setErrorMsg('');
             setSuccessInfo(null);
           }}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors shrink-0 ${
             tab === 'encrypt'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Lock className="w-4 h-4" />
+          <Lock className="w-4 h-4 shrink-0" />
           <span>ファイル暗号化 (Encrypt)</span>
         </button>
 
@@ -353,13 +353,13 @@ export const FileCryptoTool: React.FC<Props> = ({
             setErrorMsg('');
             setSuccessInfo(null);
           }}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+          className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 transition-colors shrink-0 ${
             tab === 'decrypt'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Unlock className="w-4 h-4" />
+          <Unlock className="w-4 h-4 shrink-0" />
           <span>ファイル復号 (Decrypt)</span>
         </button>
       </div>

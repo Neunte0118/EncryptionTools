@@ -357,8 +357,8 @@ export function WebTorrentTool() {
             </p>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 flex items-center gap-4 text-xs">
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            <div className="w-full md:w-auto bg-slate-950/80 border border-slate-800 rounded-lg px-3 py-2 flex items-center justify-between sm:justify-start gap-3 sm:gap-4 text-xs">
               <div>
                 <span className="text-slate-500 block">アクティブ</span>
                 <span className="font-semibold text-emerald-400">{torrents.length} 件</span>

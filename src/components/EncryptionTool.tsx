@@ -215,52 +215,52 @@ export const EncryptionTool: React.FC<Props> = ({
   return (
     <div className="space-y-6">
       {/* Encryption Type Selector */}
-      <div className="flex border-b border-slate-800 overflow-x-auto">
+      <div className="flex border-b border-slate-800 overflow-x-auto pb-0.5">
         <button
           onClick={() => setActiveSubTab('file')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 shrink-0 transition-colors ${
             activeSubTab === 'file'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <FileLock className="w-4 h-4" />
-          <span>ファイル暗号化・復号 (AES / ハイブリッド)</span>
+          <FileLock className="w-4 h-4 shrink-0" />
+          <span>ファイル暗号化 (AES/ハイブリッド)</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('rsa')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 shrink-0 transition-colors ${
             activeSubTab === 'rsa'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Lock className="w-4 h-4" />
+          <Lock className="w-4 h-4 shrink-0" />
           <span>RSA 公開鍵暗号 (テキスト)</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('aes')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 shrink-0 transition-colors ${
             activeSubTab === 'aes'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Key className="w-4 h-4" />
+          <Key className="w-4 h-4 shrink-0" />
           <span>共通鍵暗号 (テキスト)</span>
         </button>
 
         <button
           onClick={() => setActiveSubTab('ecdh')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
+          className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-6 py-2.5 sm:py-3 text-xs sm:text-sm font-medium border-b-2 shrink-0 transition-colors ${
             activeSubTab === 'ecdh'
               ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
               : 'border-transparent text-slate-400 hover:text-slate-200'
           }`}
         >
-          <Share2 className="w-4 h-4" />
+          <Share2 className="w-4 h-4 shrink-0" />
           <span>楕円曲線鍵共有 (ECDH)</span>
         </button>
       </div>

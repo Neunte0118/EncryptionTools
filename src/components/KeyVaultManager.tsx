@@ -189,29 +189,29 @@ export const KeyVaultManager: React.FC<Props> = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
             title="既存の鍵管理ファイルを読み込む"
           >
-            <Upload className="w-4 h-4 text-sky-400" />
-            <span>ファイル読み込み</span>
+            <Upload className="w-4 h-4 text-sky-400 shrink-0" />
+            <span>ファイル読込</span>
           </button>
 
           {/* Download/Export File */}
           <button
             onClick={() => exportVaultToFile(vault)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
             title="現在の全キーを単一ファイルとして保存・ダウンロード"
           >
-            <Download className="w-4 h-4" />
-            <span>ファイル書き出し (保存)</span>
+            <Download className="w-4 h-4 shrink-0" />
+            <span>ファイル書出 (保存)</span>
           </button>
 
           {/* Manual Add Key */}
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
           >
-            <Plus className="w-4 h-4 text-emerald-400" />
+            <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>鍵を手動追記</span>
           </button>
         </div>
@@ -267,7 +267,7 @@ export const KeyVaultManager: React.FC<Props> = ({
               >
                 {/* Header: Title, Type badge, Edit & Delete */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     {isEditing ? (
                       <input
                         type="text"

@@ -12,6 +12,7 @@ import { WebTorrentTool } from './components/WebTorrentTool';
 import { TorrentIPChecker } from './components/TorrentIPChecker';
 import { FileMetadataTool } from './components/FileMetadataTool';
 import { GzipCompressionTool } from './components/GzipCompressionTool';
+import { SteganographyTool } from './components/SteganographyTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -33,6 +34,7 @@ import {
   Sparkles,
   Tag,
   FileArchive,
+  Eye,
 } from 'lucide-react';
 
 type Tab =
@@ -40,6 +42,7 @@ type Tab =
   | 'signatures'
   | 'hashes'
   | 'encryption'
+  | 'steganography'
   | 'metadata'
   | 'gzip'
   | 'generator'
@@ -167,6 +170,15 @@ export default function App() {
       description: 'SHA-256 / SHA-512 / SHA-384 / SHA-1 ハッシュ値検証',
       icon: Hash,
       category: 'crypto',
+    },
+    {
+      id: 'steganography',
+      title: '画像ステガノグラフィ',
+      shortTitle: 'ステガノ',
+      description: '画像ピクセル(LSB)へのデータ不可視埋め込み・AES暗号化抽出',
+      icon: Eye,
+      category: 'crypto',
+      badge: 'NEW',
     },
     {
       id: 'metadata',
@@ -442,6 +454,8 @@ export default function App() {
           )}
 
           {activeTab === 'hashes' && <HashTool />}
+
+          {activeTab === 'steganography' && <SteganographyTool />}
 
           {activeTab === 'metadata' && <FileMetadataTool />}
 

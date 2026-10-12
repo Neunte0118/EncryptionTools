@@ -3,6 +3,8 @@
  * No external libraries used.
  */
 
+import { md5Hex, md5Base64 } from './md5Utils';
+
 // --- Encodings & Conversions ---
 
 export function bufferToBase64(buffer: ArrayBuffer): string {
@@ -70,12 +72,18 @@ export function unwrapPem(pem: string): ArrayBuffer {
 
 // --- Hash Functions ---
 
-export type HashAlgorithm = 'SHA-256' | 'SHA-512' | 'SHA-384' | 'SHA-1';
+export type HashAlgorithm = 'SHA-256' | 'SHA-512' | 'SHA-384' | 'SHA-1' | 'MD5';
 
 export async function computeHash(data: ArrayBuffer, algorithm: HashAlgorithm): Promise<{
   hex: string;
   base64: string;
 }> {
+  if (algorithm === 'MD5') {
+    return {
+      hex: md5Hex(data),
+      base64: md5Base64(data),
+    };
+  }
   const digest = await window.crypto.subtle.digest(algorithm, data);
   return {
     hex: bufferToHex(digest),

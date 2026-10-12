@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   generateFromRegex,
   generateUuidV4,
+  generateUuidV7,
   getRandomBytes,
   RANDOM_PRESETS,
   RandomPreset,
@@ -29,6 +30,7 @@ export const RandomGeneratorTool: React.FC = () => {
   const [regexError, setRegexError] = useState('');
 
   // UUID Mode State
+  const [uuidVersion, setUuidVersion] = useState<'v7' | 'v4'>('v7');
   const [uuidCount, setUuidCount] = useState<number>(5);
   const [uuidUppercase, setUuidUppercase] = useState(false);
   const [uuidNoHyphens, setUuidNoHyphens] = useState(false);
@@ -78,12 +80,21 @@ export const RandomGeneratorTool: React.FC = () => {
   const handleGenerateUuids = () => {
     const list: string[] = [];
     for (let i = 0; i < uuidCount; i++) {
-      list.push(
-        generateUuidV4({
-          uppercase: uuidUppercase,
-          noHyphens: uuidNoHyphens,
-        })
-      );
+      if (uuidVersion === 'v7') {
+        list.push(
+          generateUuidV7({
+            uppercase: uuidUppercase,
+            noHyphens: uuidNoHyphens,
+          })
+        );
+      } else {
+        list.push(
+          generateUuidV4({
+            uppercase: uuidUppercase,
+            noHyphens: uuidNoHyphens,
+          })
+        );
+      }
     }
     setUuidResults(list);
   };
@@ -151,7 +162,7 @@ export const RandomGeneratorTool: React.FC = () => {
           }`}
         >
           <Fingerprint className="w-4 h-4" />
-          <span>UUID v4 一括生成</span>
+          <span>UUID (v7 / v4) 一括生成</span>
         </button>
 
         <button
@@ -337,11 +348,25 @@ export const RandomGeneratorTool: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                 <Fingerprint className="w-4 h-4 text-indigo-400" />
-                <span>UUID v4 生成（RFC 4122 暗号論的一意識別子）</span>
+                <span>UUID 生成（RFC 9562 v7 時系列 / RFC 4122 v4 ランダム）</span>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-300 mb-1">
+                  UUID バージョン
+                </label>
+                <select
+                  value={uuidVersion}
+                  onChange={(e) => setUuidVersion(e.target.value as 'v7' | 'v4')}
+                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  <option value="v7">UUID v7 (RFC 9562: 時系列ソート推奨)</option>
+                  <option value="v4">UUID v4 (RFC 4122: 完全ランダム)</option>
+                </select>
+              </div>
+
               <div>
                 <label className="block text-xs font-medium text-slate-300 mb-1">
                   生成件数
@@ -359,7 +384,7 @@ export const RandomGeneratorTool: React.FC = () => {
                 </select>
               </div>
 
-              <div className="flex items-center gap-4 pt-6">
+              <div className="flex items-center gap-4 pt-6 sm:col-span-2">
                 <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
@@ -408,7 +433,12 @@ export const RandomGeneratorTool: React.FC = () => {
           {/* UUID Results */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
             <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
-              <span>生成された UUID ({uuidResults.length} 件)</span>
+              <div className="flex items-center gap-2">
+                <span>生成された UUID ({uuidResults.length} 件)</span>
+                <span className="px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-[10px]">
+                  {uuidVersion.toUpperCase()}
+                </span>
+              </div>
               <span className="text-[11px] text-slate-500">
                 クリックで即座にコピー
               </span>

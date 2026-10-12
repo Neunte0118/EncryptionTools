@@ -42,6 +42,10 @@ export const HashTool: React.FC = () => {
       hex: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
       base64: '2jmj7l5rSw0yVb/vlWAYkK/YBwk=',
     },
+    'MD5': {
+      hex: 'd41d8cd98f00b204e9800998ecf8427e',
+      base64: '1B2M2Y8AsgTpgAmY7PhCfg==',
+    },
   });
 
   const [isCalculating, setIsCalculating] = useState(false);
@@ -67,11 +71,12 @@ export const HashTool: React.FC = () => {
 
       setIsCalculating(true);
       try {
-        const [sha256, sha512, sha384, sha1] = await Promise.all([
+        const [sha256, sha512, sha384, sha1, md5Result] = await Promise.all([
           computeHash(buffer, 'SHA-256'),
           computeHash(buffer, 'SHA-512'),
           computeHash(buffer, 'SHA-384'),
           computeHash(buffer, 'SHA-1'),
+          computeHash(buffer, 'MD5'),
         ]);
 
         if (active) {
@@ -80,6 +85,7 @@ export const HashTool: React.FC = () => {
             'SHA-512': sha512,
             'SHA-384': sha384,
             'SHA-1': sha1,
+            'MD5': md5Result,
           });
         }
       } catch (err) {
@@ -119,7 +125,7 @@ export const HashTool: React.FC = () => {
 
   // Clean comparison check
   const cleanExpected = expectedChecksum.trim().toLowerCase();
-  const matchedAlg = (['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1'] as HashAlgorithm[]).find(
+  const matchedAlg = (['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1', 'MD5'] as HashAlgorithm[]).find(
     (alg) => hashes[alg].hex && hashes[alg].hex.toLowerCase() === cleanExpected
   );
 
@@ -217,13 +223,13 @@ export const HashTool: React.FC = () => {
           照合用期待値 (Expected Checksum)
         </label>
         <p className="text-xs text-slate-400">
-          配布元から提供された SHA-256 / SHA-512 等のハッシュ値を貼り付けると、自動照合を行います。
+          配布元から提供された SHA-256 / SHA-512 / SHA-1 / MD5 等のハッシュ値を貼り付けると、自動照合を行います。
         </p>
         <input
           type="text"
           value={expectedChecksum}
           onChange={(e) => setExpectedChecksum(e.target.value)}
-          placeholder="例: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          placeholder="照合したいハッシュ値を貼り付け (SHA-256 / SHA-512 / MD5 など)"
           className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
         />
 
@@ -258,7 +264,7 @@ export const HashTool: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          {(['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1'] as HashAlgorithm[]).map((alg) => {
+          {(['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1', 'MD5'] as HashAlgorithm[]).map((alg) => {
             const hex = hashes[alg].hex;
             const isMatched = cleanExpected && hex.toLowerCase() === cleanExpected;
 

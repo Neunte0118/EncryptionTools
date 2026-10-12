@@ -54,6 +54,56 @@ export function generateUuidV4(options?: { uppercase?: boolean; noHyphens?: bool
   return uuid;
 }
 
+/**
+ * Generate RFC 9562 UUID v7 (Time-ordered Value with 48-bit Unix timestamp)
+ * Layout:
+ * 0-47 bits: unix_ts_ms (48 bits big-endian)
+ * 48-51 bits: ver (0111 = 7)
+ * 52-63 bits: rand_a (12 bits)
+ * 64-65 bits: var (10)
+ * 66-127 bits: rand_b (62 bits)
+ */
+export function generateUuidV7(options?: {
+  timestampMs?: number;
+  uppercase?: boolean;
+  noHyphens?: boolean;
+}): string {
+  const bytes = getRandomBytes(16);
+  const now = options?.timestampMs ?? Date.now();
+
+  // 48-bit timestamp in milliseconds
+  // High 16 bits of 48-bit timestamp
+  const tsHigh = Math.floor(now / 0x100000000);
+  // Low 32 bits of 48-bit timestamp
+  const tsLow = now >>> 0;
+
+  bytes[0] = (tsHigh >>> 8) & 0xff;
+  bytes[1] = tsHigh & 0xff;
+  bytes[2] = (tsLow >>> 24) & 0xff;
+  bytes[3] = (tsLow >>> 16) & 0xff;
+  bytes[4] = (tsLow >>> 8) & 0xff;
+  bytes[5] = tsLow & 0xff;
+
+  // Version 7: 0111
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  // Variant 10xx (RFC 4122/9562)
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  let uuid = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+
+  if (options?.noHyphens) {
+    uuid = uuid.replace(/-/g, '');
+  }
+  if (options?.uppercase) {
+    uuid = uuid.toUpperCase();
+  }
+  return uuid;
+}
+
 // --- Regex Pattern Generator ---
 
 /**
@@ -258,8 +308,14 @@ export interface RandomPreset {
 
 export const RANDOM_PRESETS: RandomPreset[] = [
   {
+    id: 'uuid-v7',
+    name: 'UUID v7 (RFC 9562 時系列)',
+    description: 'ミリ秒タイムスタンプ順序付けソート可能な現代的UUID',
+    pattern: '[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',
+  },
+  {
     id: 'uuid-v4',
-    name: 'UUID v4 (RFC 4122)',
+    name: 'UUID v4 (RFC 4122 ランダム)',
     description: '標準形式の暗号学的に安全なランダム一意識別子',
     pattern: '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}',
   },

@@ -192,7 +192,7 @@ export const FileCryptoTool: React.FC<Props> = ({
 
       if (encMethod === 'hybrid-rsa') {
         if (!rsaPublicKeyPem.trim()) {
-          throw new Error('受取人のRSA公開鍵 (Public Key PEM) を指定してください');
+          throw new Error('受取人のRSA公開鍵を指定してください');
         }
         outputBuffer = await encryptFileHybrid(
           encFile.buffer,
@@ -210,7 +210,7 @@ export const FileCryptoTool: React.FC<Props> = ({
         outputBuffer = await encryptFileAesPassword(encFile.buffer, encFile.name, password);
       } else if (encMethod === 'aes-raw') {
         if (!aesRawKeyBase64.trim()) {
-          throw new Error('AES共通鍵 (256-bit Base64) を指定してください');
+          throw new Error('AES共通鍵を指定してください');
         }
         const keyBuffer = base64ToBuffer(aesRawKeyBase64.trim());
         outputBuffer = await encryptFileAesRaw(encFile.buffer, encFile.name, keyBuffer);
@@ -250,7 +250,7 @@ export const FileCryptoTool: React.FC<Props> = ({
 
       if (decMethod === 'hybrid-rsa') {
         if (!rsaPrivateKeyPem.trim()) {
-          throw new Error('復号用のRSA秘密鍵 (Private Key PEM) を指定してください');
+          throw new Error('復号用のRSA秘密鍵を指定してください');
         }
         result = await decryptFileHybrid(
           decFile.buffer,
@@ -847,10 +847,7 @@ export const FileCryptoTool: React.FC<Props> = ({
                       <span className="truncate">
                         {rsaPrivateKeyPem
                           ? '•••••••••••••••••••••••••••••••••••••••••••••••••••••••••••• [保護中: クリックまたはボタンで表示]'
-                          : '（秘密鍵未入力: ここをクリックまたは「秘密鍵を表示」を押して入力）'}
-                      </span>
-                      <span className="text-[11px] bg-slate-800 text-slate-300 px-2 py-0.5 rounded shrink-0 ml-2">
-                        表示する
+                          : '秘密鍵を入力...'}
                       </span>
                     </div>
                   )}

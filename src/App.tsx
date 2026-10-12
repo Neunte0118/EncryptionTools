@@ -143,7 +143,7 @@ export default function App() {
       id: 'generator',
       title: '鍵ペア生成',
       shortTitle: '鍵生成',
-      description: 'RSA 2048/4096bit および ECC 楕円曲線鍵ペアの新規生成',
+      description: 'RSA 2048/4096bit および ECC 楕円曲線鍵ペアの生成',
       icon: PlusCircle,
       category: 'vault',
     },
@@ -151,18 +151,17 @@ export default function App() {
       id: 'random',
       title: '乱数・UUID生成',
       shortTitle: '乱数/UUID',
-      description: 'CSPRNG 暗号論的疑似乱数・UUIDv7 (時系列) / v4・ランダムバイト列生成',
+      description: 'CSPRNG 暗号論的疑似乱数・UUID・ランダムバイト列生成',
       icon: Dices,
       category: 'vault',
     },
     {
       id: 'two-factor',
-      title: 'ローカル 2要素認証 (2FA)',
+      title: '二要素認証',
       shortTitle: '2要素認証',
-      description: 'TOTP / HOTP ワンタイム認証コード生成・安全なローカル管理・検証',
+      description: 'ワンタイム認証コード生成・検証',
       icon: KeyRound,
       category: 'crypto',
-      badge: 'TOTP/HOTP',
     },
     {
       id: 'binary-studio',
@@ -171,13 +170,12 @@ export default function App() {
       description: 'Hex / Base64 / Base32 / Base58 / 2進 / 10進 / Hexダンプ / エンディアン解析',
       icon: Binary,
       category: 'crypto',
-      badge: '開発者向け',
     },
     {
       id: 'signatures',
       title: '電子署名・検証',
       shortTitle: '電子署名',
-      description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改ざん検証',
+      description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
       icon: FileSignature,
       category: 'crypto',
     },
@@ -201,7 +199,7 @@ export default function App() {
       id: 'shamir',
       title: 'シャミアの秘密分散法',
       shortTitle: '秘密分散法',
-      description: '(k, n) 閾値法による秘密分割 & 復元 (完全秘匿・情報理論的安全)',
+      description: '(k, n) 閾値法による秘密分割 & 復元',
       icon: Split,
       category: 'crypto',
     },
@@ -215,9 +213,9 @@ export default function App() {
     },
     {
       id: 'metadata',
-      title: 'メタ情報編集・削除',
+      title: 'メタ情報編集',
       shortTitle: 'メタ情報編集',
-      description: '画像(Exif/GPS)・音声(ID3 & カバー)・動画・PDFの編集と完全削除',
+      description: '画像(Exif)・音声・動画・PDFの編集と完全削除',
       icon: Tag,
       category: 'crypto',
     },
@@ -225,34 +223,24 @@ export default function App() {
       id: 'gzip',
       title: 'Gzip 圧縮・解凍',
       shortTitle: 'Gzip圧縮',
-      description: '標準Web API (CompressionStream) による完全ローカル高速圧縮',
+      description: '標準Web API (CompressionStream) による高速圧縮',
       icon: FileArchive,
       category: 'crypto',
-      badge: '標準API',
     },
     {
       id: 'p2p',
-      title: 'P2P通信 (方式A)',
+      title: 'P2P通信',
       shortTitle: 'P2P通信',
       description: 'WebRTC 完全サーバーレス直接通信 (チャット・ファイル・鍵交換)',
       icon: Radio,
       category: 'p2p',
-      badge: '方式A',
     },
     {
       id: 'torrent',
-      title: 'WebTorrent 分散共有',
+      title: 'WebTorrent',
       shortTitle: 'WebTorrent',
       description: 'ブラウザ間でのP2P分散ファイル共有 & シード配信',
       icon: Share2,
-      category: 'p2p',
-    },
-    {
-      id: 'ip-checker',
-      title: 'VPN・Torrent IP診断',
-      shortTitle: 'IP診断',
-      description: 'WebRTC / STUN / Tracker IPリーク検証 & 匿名性テスト',
-      icon: ShieldCheck,
       category: 'p2p',
     },
   ];
@@ -370,11 +358,6 @@ export default function App() {
             <div className="flex items-center gap-2 sm:gap-3">
               {/* PWA Install Button */}
               <PWAInstallButton variant="header" />
-
-              <div className="hidden sm:flex items-center gap-1.5 text-[11px] text-emerald-400 font-medium px-2 py-1 rounded bg-emerald-950/40 border border-emerald-800/40">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>完全ローカル (オフライン安全)</span>
-              </div>
 
               <button
                 onClick={() => handleSelectTab('vault')}

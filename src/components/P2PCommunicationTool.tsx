@@ -849,10 +849,10 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                 <div>
                   <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                     <Radio className="w-4 h-4 text-indigo-400" />
-                    WebRTC 手動シグナリング手順 (方式A)
+                    WebRTC 手動シグナリング手順
                   </h3>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    1台が「ホスト (Offer作成)」、もう1台が「ゲスト (Answer作成)」を選択し、コードを1度コピペ交換するだけで接続できます。
+                    1台が「ホスト」、もう1台が「ゲスト」を選択し、コードを1度交換するだけで接続できます。
                   </p>
                 </div>
 
@@ -888,8 +888,8 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                     <span className="text-slate-300 font-medium">STUN サーバー設定: </span>
                     <span className="text-slate-400">
                       {useStun
-                        ? '標準 STUN (Google) 有効 (NAT/ルーター越え対応)'
-                        : 'STUN 無効 (完全オフライン / 同一LAN・エアギャップ環境専用)'}
+                        ? 'STUNサーバー 有効'
+                        : 'STUNサーバー 無効'}
                     </span>
                   </div>
                 </div>
@@ -897,7 +897,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                   onClick={() => setUseStun(!useStun)}
                   className="text-indigo-400 hover:text-indigo-300 underline font-medium self-end sm:self-auto shrink-0"
                 >
-                  {useStun ? 'STUN を無効化する' : 'STUN を有効化する'}
+                  {useStun ? 'STUNサーバーを無効化する' : 'STUNサーバーを有効化する'}
                 </button>
               </div>
 
@@ -911,7 +911,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         <span className="w-5 h-5 rounded-full bg-indigo-900/80 text-indigo-300 flex items-center justify-center text-[11px]">
                           1
                         </span>
-                        接続コード (Offer SDP) の生成
+                        接続コードの生成
                       </div>
 
                       <button
@@ -927,7 +927,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         ) : (
                           <>
                             <Sparkles className="w-3.5 h-3.5" />
-                            接続コード (Offer) を生成
+                            接続コードを生成
                           </>
                         )}
                       </button>
@@ -980,7 +980,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                       <span className="w-5 h-5 rounded-full bg-indigo-900/80 text-indigo-300 flex items-center justify-center text-[11px]">
                         2
                       </span>
-                      相手からの応答コード (Answer SDP) を貼り付け
+                      相手からの応答コードを貼り付け
                     </div>
 
                     <textarea
@@ -998,7 +998,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         className="px-4 py-2 rounded bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
                       >
                         <CheckCircle2 className="w-4 h-4" />
-                        接続を完了する (Connect)
+                        接続を完了する
                       </button>
                     </div>
                   </div>
@@ -1014,7 +1014,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                       <span className="w-5 h-5 rounded-full bg-indigo-900/80 text-indigo-300 flex items-center justify-center text-[11px]">
                         1
                       </span>
-                      ホストから受け取った接続コード (Offer SDP) を貼り付け
+                      ホストから受け取った接続コードを貼り付け
                     </div>
 
                     <textarea
@@ -1039,7 +1039,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         ) : (
                           <>
                             <Sparkles className="w-4 h-4" />
-                            応答コード (Answer) を生成
+                            応答コードを生成
                           </>
                         )}
                       </button>
@@ -1065,7 +1065,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                           {copiedField === 'join-answer' ? (
                             <>
                               <Check className="w-3.5 h-3.5" />
-                              コピー完了！
+                              コピー完了
                             </>
                           ) : (
                             <>
@@ -1095,7 +1095,7 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
                         <div>
                           <p className="font-semibold">ホストの接続承認を待機中...</p>
                           <p className="text-[11px] text-amber-200/80 mt-0.5">
-                            上の応答コードをコピーしてホスト（相手）に渡してください。ホストがこのコードを貼り付けて「接続を完了する」を実行すると、この画面は自動的に暗号化チャット・転送画面へ切り替わります。
+                            上の応答コードをコピーしてホストに渡してください。ホストがこのコードを貼り付けて「接続を完了する」を実行すると、この画面は自動的に暗号化チャット・転送画面へ切り替わります。
                           </p>
                         </div>
                       </div>

@@ -447,7 +447,7 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
               }`}
             >
               <Split className="w-4 h-4" />
-              <span>秘密を分割 (生成)</span>
+              <span>秘密を分割</span>
             </button>
             <button
               onClick={() => setActiveTab('reconstruct')}
@@ -458,18 +458,7 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
               }`}
             >
               <Key className="w-4 h-4" />
-              <span>秘密を復元 (結合)</span>
-            </button>
-            <button
-              onClick={() => setActiveTab('math')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all ${
-                activeTab === 'math'
-                  ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/30'
-                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
-              }`}
-            >
-              <Info className="w-4 h-4" />
-              <span>仕組みと数学</span>
+              <span>秘密を復元</span>
             </button>
           </div>
         </div>

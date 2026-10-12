@@ -75,19 +75,12 @@ export const PWAInstallButton: React.FC<Props> = ({ variant = 'header' }) => {
           title="PWAスタンドアロンモードで動作中（オフライン利用可能）"
         >
           <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-          <span className="hidden sm:inline">PWA稼働中</span>
         </div>
       );
     }
 
     return (
-      <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-emerald-300 text-xs">
-        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-        <div>
-          <div className="font-semibold text-emerald-200">PWAインストール済み</div>
-          <div className="text-[10px] text-emerald-400/80">スタンドアロン起動 / 完全オフライン対応</div>
-        </div>
-      </div>
+      <div />
     );
   }
 

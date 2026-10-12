@@ -106,7 +106,7 @@ export const EncryptionTool: React.FC<Props> = ({
     setRsaError('');
     setRsaCiphertext('');
     if (!rsaPublicKeyPem.trim()) {
-      setRsaError('暗号化用の公開鍵 (Public Key PEM) を指定してください');
+      setRsaError('暗号化用の公開鍵を指定してください');
       return;
     }
     if (!rsaPlaintext) {
@@ -126,7 +126,7 @@ export const EncryptionTool: React.FC<Props> = ({
     setRsaError('');
     setRsaDecryptedResult('');
     if (!rsaPrivateKeyPem.trim()) {
-      setRsaError('復号用の秘密鍵 (Private Key PEM) を指定してください');
+      setRsaError('復号用の秘密鍵を指定してください');
       return;
     }
     if (!rsaCiphertext.trim()) {

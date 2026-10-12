@@ -147,7 +147,7 @@ export const SignatureTool: React.FC<Props> = ({
     setGeneratedSigHex('');
 
     if (!privateKeyPem.trim()) {
-      setSignError('署名に使用する秘密鍵 (Private Key PEM) を指定してください');
+      setSignError('署名に使用する秘密鍵を指定してください');
       return;
     }
 
@@ -173,7 +173,7 @@ export const SignatureTool: React.FC<Props> = ({
     setVerificationResult(null);
 
     if (!publicKeyPem.trim()) {
-      setVerifyError('検証に使用する公開鍵 (Public Key PEM) を指定してください');
+      setVerifyError('検証に使用する公開鍵を指定してください');
       return;
     }
 

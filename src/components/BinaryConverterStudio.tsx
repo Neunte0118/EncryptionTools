@@ -247,7 +247,6 @@ export const BinaryConverterStudio: React.FC = () => {
       <div className="flex items-center justify-between px-3 py-2 bg-slate-900/60 border border-slate-800 rounded-lg text-xs font-mono">
         <div className="flex items-center gap-2 text-slate-400">
           <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
-          <span>双方向リアルタイム同期:</span>
           <span className="text-slate-300 font-sans">
             {editingFormat
               ? `現在「${editingFormat.toUpperCase()}」を編集中`

@@ -83,11 +83,53 @@ export const SteganographyTool: React.FC = () => {
   useEffect(() => {
     return () => {
       if (carrierUrl) URL.revokeObjectURL(carrierUrl);
-      if (encodeResultUrl) URL.revokeObjectURL(encodeResultUrl);
       if (diffCanvasUrl) URL.revokeObjectURL(diffCanvasUrl);
       if (decodeUrl) URL.revokeObjectURL(decodeUrl);
     };
-  }, [carrierUrl, encodeResultUrl, diffCanvasUrl, decodeUrl]);
+  }, [carrierUrl, diffCanvasUrl, decodeUrl]);
+
+  // Robust download handler for blobs
+  const handleDownloadStego = () => {
+    if (!encodeResult?.pngBlob) return;
+    try {
+      const blob = encodeResult.pngBlob;
+      const downloadUrl = URL.createObjectURL(blob);
+      const filename = `stego_${carrierFile?.name.replace(/\.[^/.]+$/, '') || 'image'}.png`;
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      }, 200);
+    } catch (e: any) {
+      console.error('Download failed:', e);
+      setEncodeError('ダウンロード処理中にエラーが発生しました: ' + (e?.message || '不明'));
+    }
+  };
+
+  const handleDownloadDecodedFile = () => {
+    if (!decodeResult?.fileBlob) return;
+    try {
+      const blob = decodeResult.fileBlob;
+      const downloadUrl = URL.createObjectURL(blob);
+      const filename = decodeResult.fileName || 'extracted_file';
+      const a = document.createElement('a');
+      a.href = downloadUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(downloadUrl);
+      }, 200);
+    } catch (e: any) {
+      console.error('Decoded file download failed:', e);
+      setDecodeError('ファイルダウンロードに失敗しました: ' + (e?.message || '不明'));
+    }
+  };
 
   // Handle Carrier Image Selection
   const handleCarrierSelect = (file: File) => {
@@ -113,54 +155,6 @@ export const SteganographyTool: React.FC = () => {
       setCarrierCapacity(cap);
     };
     img.src = url;
-  };
-
-  // Generate Sample Carrier Image (Gradient canvas)
-  const handleGenerateSampleCarrier = () => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1200;
-    canvas.height = 800;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    // Create scenic gradient with crypto patterns
-    const grad = ctx.createLinearGradient(0, 0, 1200, 800);
-    grad.addColorStop(0, '#1e1b4b');
-    grad.addColorStop(0.5, '#312e81');
-    grad.addColorStop(1, '#0f172a');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 1200, 800);
-
-    // Decorative shapes
-    for (let i = 0; i < 30; i++) {
-      ctx.beginPath();
-      ctx.arc(
-        Math.random() * 1200,
-        Math.random() * 800,
-        Math.random() * 120 + 20,
-        0,
-        Math.PI * 2
-      );
-      ctx.fillStyle = `rgba(${Math.floor(Math.random() * 100 + 100)}, ${Math.floor(
-        Math.random() * 100 + 100
-      )}, 255, 0.12)`;
-      ctx.fill();
-    }
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = 'bold 36px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('Sample Carrier Image', 600, 380);
-    ctx.font = '18px monospace';
-    ctx.fillStyle = '#94a3b8';
-    ctx.fillText('1200 x 800 (Capacity: ~351 KB)', 600, 425);
-
-    canvas.toBlob((blob) => {
-      if (blob) {
-        const file = new File([blob], 'sample_carrier.png', { type: 'image/png' });
-        handleCarrierSelect(file);
-      }
-    }, 'image/png');
   };
 
   // Handle Secret File Selection
@@ -398,14 +392,6 @@ export const SteganographyTool: React.FC = () => {
                   </span>
                   母艦画像 (Carrier Image) の選択
                 </h2>
-                <button
-                  onClick={handleGenerateSampleCarrier}
-                  className="text-[11px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors cursor-pointer"
-                  title="テスト用のサンプル画像を即座に生成"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  サンプル画像を生成
-                </button>
               </div>
 
               {/* Upload Dropzone */}
@@ -794,14 +780,14 @@ export const SteganographyTool: React.FC = () => {
                   必ずダウンロードされた <strong>PNG 形式</strong> のまま保存してください。
                   JPEG等の不可逆圧縮を通すと最下位ビットが損なわれます。
                 </div>
-                <a
-                  href={encodeResultUrl}
-                  download={`stego_${carrierFile?.name.replace(/\.[^/.]+$/, '') || 'image'}.png`}
+                <button
+                  type="button"
+                  onClick={handleDownloadStego}
                   className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/30 transition-all shrink-0 cursor-pointer"
                 >
                   <Download className="w-4 h-4" />
                   <span>ステガノグラフィ画像を保存 (PNG)</span>
-                </a>
+                </button>
               </div>
             </div>
           )}
@@ -1062,14 +1048,14 @@ export const SteganographyTool: React.FC = () => {
                   </div>
 
                   {decodeResult.fileBlob && (
-                    <a
-                      href={URL.createObjectURL(decodeResult.fileBlob)}
-                      download={decodeResult.fileName || 'extracted_file'}
+                    <button
+                      type="button"
+                      onClick={handleDownloadDecodedFile}
                       className="w-full sm:w-auto px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow transition-all cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5" />
                       <span>ファイルをダウンロード</span>
-                    </a>
+                    </button>
                   )}
                 </div>
               )}

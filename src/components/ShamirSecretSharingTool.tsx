@@ -253,19 +253,6 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
     URL.revokeObjectURL(url);
   };
 
-  // Preset secrets
-  const loadPresetSecret = (preset: 'mnemonic' | 'crypto' | 'password') => {
-    if (preset === 'mnemonic') {
-      setSecretText(
-        'ocean peanut canvas victory shield velvet crisp mystery digital harbor pulse wisdom'
-      );
-    } else if (preset === 'crypto') {
-      setSecretText('0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce9c46f30d7d21715b23b1d');
-    } else {
-      setSecretText('MasterVault@2026!#UltraSecureSecretKey_Alpha99');
-    }
-  };
-
   // --- Reconstruct Logic ---
   const handleAddShareInput = () => {
     setReconstructInputs([...reconstructInputs, '']);
@@ -565,32 +552,6 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
 
                     <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
                       <span>文字数: {secretText.length} 文字</span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-slate-500">サンプル:</span>
-                        <button
-                          type="button"
-                          onClick={() => loadPresetSecret('mnemonic')}
-                          className="text-cyan-400 hover:underline"
-                        >
-                          シード12語
-                        </button>
-                        <span className="text-slate-700">|</span>
-                        <button
-                          type="button"
-                          onClick={() => loadPresetSecret('crypto')}
-                          className="text-cyan-400 hover:underline"
-                        >
-                          秘密鍵Hex
-                        </button>
-                        <span className="text-slate-700">|</span>
-                        <button
-                          type="button"
-                          onClick={() => loadPresetSecret('password')}
-                          className="text-cyan-400 hover:underline"
-                        >
-                          パスワード
-                        </button>
-                      </div>
                     </div>
                   </div>
                 )}

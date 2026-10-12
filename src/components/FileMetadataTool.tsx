@@ -470,7 +470,7 @@ export const FileMetadataTool: React.FC = () => {
                       type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="例: サンプル曲 / 旅行写真"
+                      placeholder="タイトルを入力 (例: 音声トラック / 風景写真)"
                       className="w-full bg-slate-950 border border-slate-800 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs sm:text-sm text-slate-100 placeholder-slate-600 outline-none transition-colors"
                     />
                   </div>

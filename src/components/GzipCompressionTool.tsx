@@ -229,33 +229,6 @@ export const GzipCompressionTool: React.FC = () => {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const loadSampleText = () => {
-    const sample = JSON.stringify(
-      {
-        service: "Local Crypto Vault Studio",
-        standardLibrary: "CompressionStream ('gzip')",
-        offlineSafe: true,
-        features: [
-          "AES-GCM",
-          "RSA-OAEP",
-          "ECDSA",
-          "P2P WebRTC Direct",
-          "Metadata Stripper",
-          "Native Gzip"
-        ],
-        sampleData: Array(10).fill({
-          timestamp: new Date().toISOString(),
-          status: "SUCCESS",
-          message: "このサンプルデータは反復パターンが多いため、gzip圧縮で90%以上小さくなります。"
-        })
-      },
-      null,
-      2
-    );
-    setTextInput(sample);
-    setTextMode('compress');
-  };
-
   return (
     <div className="space-y-6">
       {/* Header Banner */}
@@ -569,15 +542,6 @@ export const GzipCompressionTool: React.FC = () => {
                 }`}
               >
                 Hex
-              </button>
-
-              <button
-                onClick={loadSampleText}
-                className="ml-2 text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
-                title="サンプルのJSONデータを入力"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>サンプル挿入</span>
               </button>
             </div>
           </div>

@@ -14,6 +14,8 @@ import { FileMetadataTool } from './components/FileMetadataTool';
 import { GzipCompressionTool } from './components/GzipCompressionTool';
 import { SteganographyTool } from './components/SteganographyTool';
 import { ShamirSecretSharingTool } from './components/ShamirSecretSharingTool';
+import { TwoFactorAuthTool } from './components/TwoFactorAuthTool';
+import { BinaryConverterStudio } from './components/BinaryConverterStudio';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -37,10 +39,13 @@ import {
   FileArchive,
   Eye,
   Split,
+  KeyRound,
 } from 'lucide-react';
 
 type Tab =
   | 'vault'
+  | 'two-factor'
+  | 'binary-studio'
   | 'signatures'
   | 'hashes'
   | 'encryption'
@@ -149,6 +154,24 @@ export default function App() {
       description: 'CSPRNG 暗号論的疑似乱数・UUIDv4・ランダムバイト列生成',
       icon: Dices,
       category: 'vault',
+    },
+    {
+      id: 'two-factor',
+      title: 'ローカル 2要素認証 (2FA)',
+      shortTitle: '2要素認証',
+      description: 'TOTP / HOTP ワンタイムパスワード生成・QRコード連携・検証',
+      icon: KeyRound,
+      category: 'crypto',
+      badge: 'TOTP/HOTP',
+    },
+    {
+      id: 'binary-studio',
+      title: 'バイナリ変換スタジオ',
+      shortTitle: 'バイナリ変換',
+      description: 'Hex / Base64 / Base32 / Base58 / 2進 / 10進 / Hexダンプ / エンディアン解析',
+      icon: Binary,
+      category: 'crypto',
+      badge: '開発者向け',
     },
     {
       id: 'signatures',
@@ -448,6 +471,10 @@ export default function App() {
               onSelectKeyForAction={handleSelectKeyForAction}
             />
           )}
+
+          {activeTab === 'two-factor' && <TwoFactorAuthTool />}
+
+          {activeTab === 'binary-studio' && <BinaryConverterStudio />}
 
           {activeTab === 'signatures' && (
             <SignatureTool

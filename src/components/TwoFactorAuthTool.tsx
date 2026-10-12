@@ -1,12 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
-import QRCode from 'qrcode';
 import {
-  generate2FASecret,
   generateTOTP,
   generateHOTP,
   verifyTOTP,
   parseOtpAuthUri,
-  generateOtpAuthUri,
   TotpAlgorithm,
   OtpAuthData,
 } from '../utils/totpUtils';
@@ -14,7 +11,6 @@ import {
   ShieldCheck,
   KeyRound,
   RefreshCw,
-  QrCode,
   Copy,
   Check,
   Clock,
@@ -25,6 +21,8 @@ import {
   AlertCircle,
   ExternalLink,
   Lock,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 interface Stored2FAAccount {
@@ -72,15 +70,16 @@ export const TwoFactorAuthTool: React.FC = () => {
   // New account form state
   const [newLabel, setNewLabel] = useState('');
   const [newIssuer, setNewIssuer] = useState('');
-  const [newSecret, setNewSecret] = useState(() => generate2FASecret(20));
+  const [newSecret, setNewSecret] = useState('');
+  const [showNewSecret, setShowNewSecret] = useState(false);
   const [newType, setNewType] = useState<'totp' | 'hotp'>('totp');
   const [newAlgo, setNewAlgo] = useState<TotpAlgorithm>('SHA-1');
   const [newDigits, setNewDigits] = useState<number>(6);
   const [newPeriod, setNewPeriod] = useState<number>(30);
-  const [newQrDataUrl, setNewQrDataUrl] = useState<string>('');
 
   // Verifier tool state
   const [verifySecret, setVerifySecret] = useState('');
+  const [showVerifySecret, setShowVerifySecret] = useState(false);
   const [verifyCode, setVerifyCode] = useState('');
   const [verifyWindow, setVerifyWindow] = useState<number>(1);
   const [verifyResult, setVerifyResult] = useState<{
@@ -160,34 +159,6 @@ export const TwoFactorAuthTool: React.FC = () => {
     };
   }, [accounts, now]);
 
-  // Generate QR code for new account setup
-  useEffect(() => {
-    if (!newSecret) return;
-    try {
-      const uri = generateOtpAuthUri({
-        type: newType,
-        label: newLabel || 'アカウント',
-        issuer: newIssuer || undefined,
-        secret: newSecret,
-        algorithm: newAlgo,
-        digits: newDigits,
-        period: newPeriod,
-        counter: 0,
-      });
-
-      QRCode.toDataURL(uri, {
-        width: 200,
-        margin: 2,
-        color: {
-          dark: '#0f172a',
-          light: '#ffffff',
-        },
-      }).then((url) => setNewQrDataUrl(url));
-    } catch {
-      setNewQrDataUrl('');
-    }
-  }, [newLabel, newIssuer, newSecret, newType, newAlgo, newDigits, newPeriod]);
-
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -211,8 +182,10 @@ export const TwoFactorAuthTool: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
     setAccounts((prev) => [newAccount, ...prev]);
-    // Reset or refresh secret
-    setNewSecret(generate2FASecret(20));
+    // Reset form fields
+    setNewSecret('');
+    setNewLabel('');
+    setNewIssuer('');
     setActiveTab('authenticator');
   };
 
@@ -361,7 +334,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              新規登録・QR生成
+              アカウント手動登録
             </button>
             <button
               onClick={() => setActiveTab('verify')}
@@ -533,17 +506,6 @@ export const TwoFactorAuthTool: React.FC = () => {
                         </button>
                       </div>
                     </div>
-
-                    {/* Secret key detail */}
-                    <div className="pt-1 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-800/60 font-mono">
-                      <span className="truncate max-w-[180px]">Secret: {acc.secret}</span>
-                      <button
-                        onClick={() => handleCopy(acc.secret, `sec-${acc.id}`)}
-                        className="hover:text-slate-300 transition-colors"
-                      >
-                        {copiedId === `sec-${acc.id}` ? 'コピー完了' : 'キーコピー'}
-                      </button>
-                    </div>
                   </div>
                 );
               })}
@@ -554,15 +516,20 @@ export const TwoFactorAuthTool: React.FC = () => {
 
       {/* Tab: Generator & New Account */}
       {activeTab === 'generator' && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="max-w-2xl mx-auto">
           {/* Setup Form */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-              <Plus className="w-4 h-4 text-indigo-400" />
-              アカウント登録 & シークレットキー設定
-            </h3>
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 space-y-5">
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                <Plus className="w-4 h-4 text-indigo-400" />
+                2FA アカウントの手動追加
+              </h3>
+              <p className="text-xs text-slate-400">
+                外部サービス（GitHub、AWS、Google 等）の2段階認証設定画面に表示されたシークレットキーを入力して登録します。
+              </p>
+            </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-4 text-xs">
               <div>
                 <label className="block text-slate-400 mb-1">発行者 (Issuer / サービス名)</label>
                 <input
@@ -589,26 +556,41 @@ export const TwoFactorAuthTool: React.FC = () => {
                 <div className="flex items-center justify-between mb-1">
                   <label className="text-slate-400">シークレットキー (Base32)</label>
                   <button
-                    onClick={() => setNewSecret(generate2FASecret(20))}
-                    className="flex items-center gap-1 text-[11px] text-indigo-400 hover:text-indigo-300 font-mono"
+                    type="button"
+                    onClick={() => setShowNewSecret(!showNewSecret)}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
                   >
-                    <RefreshCw className="w-3 h-3" />
-                    ランダム自動生成 (160bit)
+                    {showNewSecret ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5" />
+                        <span>マスクする</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>表示する</span>
+                      </>
+                    )}
                   </button>
                 </div>
-                <input
-                  type="text"
-                  value={newSecret}
-                  onChange={(e) => setNewSecret(e.target.value.toUpperCase())}
-                  placeholder="Base32シークレットキー (例: JBSWY3...)"
-                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-xs"
-                />
+                <div className="relative">
+                  <input
+                    type={showNewSecret ? 'text' : 'password'}
+                    value={newSecret}
+                    onChange={(e) => setNewSecret(e.target.value.toUpperCase())}
+                    placeholder="サービスから発行されたBase32シークレットキーを入力"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-xs pr-10"
+                  />
+                  <div className="absolute right-3 top-2.5 text-slate-500">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  RFC 4648 Base32規格 (A-Z, 2-7)。空白や小文字は自動で正規化されます。
+                  RFC 4648 Base32規格 (A-Z, 2-7)。外部サービス管理画面の2FA設定用キーをそのまま貼り付けてください。
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
                 <div>
                   <label className="block text-slate-400 mb-1">認証タイプ</label>
                   <select
@@ -635,7 +617,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-slate-400 mb-1">桁数</label>
                   <select
@@ -666,82 +648,19 @@ export const TwoFactorAuthTool: React.FC = () => {
               <div className="pt-2">
                 <button
                   onClick={handleAddAccount}
-                  className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition-colors shadow-sm"
+                  disabled={!newSecret.trim()}
+                  className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-medium text-xs transition-colors shadow-sm"
                 >
                   このアカウントをローカル認証器に追加
                 </button>
               </div>
-            </div>
-          </div>
 
-          {/* QR Code & URI preview */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
-            <div className="space-y-4">
-              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <QrCode className="w-4 h-4 text-emerald-400" />
-                スマートフォン認証アプリ登録用 QRコード
-              </h3>
-
-              <div className="flex flex-col items-center justify-center p-4 bg-slate-950/60 rounded-xl border border-slate-800/80">
-                {newQrDataUrl ? (
-                  <div className="p-3 bg-white rounded-lg shadow-sm">
-                    <img src={newQrDataUrl} alt="2FA QR Code" className="w-44 h-44" />
-                  </div>
-                ) : (
-                  <div className="w-44 h-44 flex items-center justify-center text-xs text-slate-500">
-                    QRコードを生成中...
-                  </div>
-                )}
-
-                <div className="mt-3 text-[11px] text-slate-400 text-center max-w-xs">
-                  スマホの「Google Authenticator」「Microsoft Authenticator」「1Password」等のカメラで読み取って即時同期できます。
-                </div>
+              <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-300 text-[11px] flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>
+                  外部サーバーへのシークレット送信は一切ありません。ブラウザ内ローカルでのみ安全に保持されます。
+                </span>
               </div>
-
-              <div className="space-y-1">
-                <div className="flex items-center justify-between text-xs text-slate-400">
-                  <span>標準 otpauth:// URI:</span>
-                  <button
-                    onClick={() =>
-                      handleCopy(
-                        generateOtpAuthUri({
-                          type: newType,
-                          label: newLabel || 'アカウント',
-                          issuer: newIssuer || undefined,
-                          secret: newSecret,
-                          algorithm: newAlgo,
-                          digits: newDigits,
-                          period: newPeriod,
-                          counter: 0,
-                        }),
-                        'uri-copy'
-                      )
-                    }
-                    className="text-indigo-400 hover:text-indigo-300 font-mono text-[11px]"
-                  >
-                    {copiedId === 'uri-copy' ? 'コピー完了' : 'URIをコピー'}
-                  </button>
-                </div>
-                <div className="p-2.5 bg-slate-950 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 break-all select-all">
-                  {generateOtpAuthUri({
-                    type: newType,
-                    label: newLabel || 'アカウント',
-                    issuer: newIssuer || undefined,
-                    secret: newSecret,
-                    algorithm: newAlgo,
-                    digits: newDigits,
-                    period: newPeriod,
-                    counter: 0,
-                  })}
-                </div>
-              </div>
-            </div>
-
-            <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-300 text-[11px] flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
-              <span>
-                外部サーバーへのシークレット送信は一切ありません。ブラウザ内ローカルでのみ秘密裏に保持されます。
-              </span>
             </div>
           </div>
         </div>
@@ -762,14 +681,38 @@ export const TwoFactorAuthTool: React.FC = () => {
 
           <div className="space-y-4 text-xs">
             <div>
-              <label className="block text-slate-400 mb-1">検証用シークレットキー (Base32)</label>
-              <input
-                type="text"
-                value={verifySecret}
-                onChange={(e) => setVerifySecret(e.target.value.toUpperCase())}
-                placeholder="Base32シークレットキーを入力"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-              />
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-slate-400">検証用シークレットキー (Base32)</label>
+                <button
+                  type="button"
+                  onClick={() => setShowVerifySecret(!showVerifySecret)}
+                  className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 transition-colors"
+                >
+                  {showVerifySecret ? (
+                    <>
+                      <EyeOff className="w-3.5 h-3.5" />
+                      <span>マスクする</span>
+                    </>
+                  ) : (
+                    <>
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>表示する</span>
+                    </>
+                  )}
+                </button>
+              </div>
+              <div className="relative">
+                <input
+                  type={showVerifySecret ? 'text' : 'password'}
+                  value={verifySecret}
+                  onChange={(e) => setVerifySecret(e.target.value.toUpperCase())}
+                  placeholder="Base32シークレットキーを入力"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono pr-10"
+                />
+                <div className="absolute right-3 top-2.5 text-slate-500">
+                  <Lock className="w-4 h-4" />
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

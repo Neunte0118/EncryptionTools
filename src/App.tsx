@@ -159,7 +159,7 @@ export default function App() {
       id: 'two-factor',
       title: 'ローカル 2要素認証 (2FA)',
       shortTitle: '2要素認証',
-      description: 'TOTP / HOTP ワンタイムパスワード生成・QRコード連携・検証',
+      description: 'TOTP / HOTP ワンタイム認証コード生成・安全なローカル管理・検証',
       icon: KeyRound,
       category: 'crypto',
       badge: 'TOTP/HOTP',

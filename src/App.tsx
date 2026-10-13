@@ -9,13 +9,14 @@ import { KeyGeneratorTool } from './components/KeyGeneratorTool';
 import { RandomGeneratorTool } from './components/RandomGeneratorTool';
 import { P2PCommunicationTool } from './components/P2PCommunicationTool';
 import { WebTorrentTool } from './components/WebTorrentTool';
-import { TorrentIPChecker } from './components/TorrentIPChecker';
 import { FileMetadataTool } from './components/FileMetadataTool';
 import { GzipCompressionTool } from './components/GzipCompressionTool';
 import { SteganographyTool } from './components/SteganographyTool';
 import { ShamirSecretSharingTool } from './components/ShamirSecretSharingTool';
 import { TwoFactorAuthTool } from './components/TwoFactorAuthTool';
 import { BinaryConverterStudio } from './components/BinaryConverterStudio';
+import { SelfDecryptingPackageTool } from './components/SelfDecryptingPackageTool';
+import { TimelockCryptoTool } from './components/TimelockCryptoTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -40,6 +41,8 @@ import {
   Eye,
   Split,
   KeyRound,
+  FileCode,
+  Hourglass,
 } from 'lucide-react';
 
 type Tab =
@@ -49,6 +52,8 @@ type Tab =
   | 'signatures'
   | 'hashes'
   | 'encryption'
+  | 'self-decrypt'
+  | 'timelock'
   | 'shamir'
   | 'steganography'
   | 'metadata'
@@ -56,8 +61,7 @@ type Tab =
   | 'generator'
   | 'random'
   | 'p2p'
-  | 'torrent'
-  | 'ip-checker';
+  | 'torrent';
 
 interface ToolItem {
   id: Tab;
@@ -185,6 +189,22 @@ export default function App() {
       shortTitle: '暗号化/復号',
       description: 'AES-GCM / RSA-OAEP / ハイブリッド暗号 / ECDH 鍵共有',
       icon: Lock,
+      category: 'crypto',
+    },
+    {
+      id: 'self-decrypt',
+      title: '自己復号HTML生成',
+      shortTitle: '自己復号HTML',
+      description: 'ブラウザで開くだけで動くAES-256暗号化単一HTMLファイルの生成',
+      icon: FileCode,
+      category: 'crypto',
+    },
+    {
+      id: 'timelock',
+      title: 'タイムロック暗号 (drand)',
+      shortTitle: 'タイムロック',
+      description: '未来の指定時刻まで絶対に解錠できない時限暗号・復号 (tlock)',
+      icon: Hourglass,
       category: 'crypto',
     },
     {
@@ -408,7 +428,7 @@ export default function App() {
             <div className="flex-1 p-3 space-y-4">
               {renderNavGroup('vault', '鍵管理 & 生成')}
               {renderNavGroup('crypto', '暗号化 & デジタル署名')}
-              {renderNavGroup('p2p', 'P2P 分散通信 & 診断')}
+              {renderNavGroup('p2p', 'P2P 分散通信')}
 
               <div className="pt-2 border-t border-slate-800/80">
                 <PWAInstallButton variant="sidebar" />
@@ -507,6 +527,10 @@ export default function App() {
             />
           )}
 
+          {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
+
+          {activeTab === 'timelock' && <TimelockCryptoTool />}
+
           {activeTab === 'generator' && (
             <KeyGeneratorTool
               vault={vault}
@@ -525,8 +549,6 @@ export default function App() {
           )}
 
           {activeTab === 'torrent' && <WebTorrentTool />}
-
-          {activeTab === 'ip-checker' && <TorrentIPChecker />}
         </main>
       </div>
 
@@ -594,7 +616,7 @@ export default function App() {
         <div className="flex-1 overflow-y-auto p-3 space-y-4">
           {renderNavGroup('vault', '鍵管理 & 生成')}
           {renderNavGroup('crypto', '暗号化 & デジタル署名')}
-          {renderNavGroup('p2p', 'P2P 分散通信 & 診断')}
+          {renderNavGroup('p2p', 'P2P 分散通信')}
         </div>
 
         {/* Drawer Footer */}

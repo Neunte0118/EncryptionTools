@@ -17,6 +17,7 @@
     "@vitejs/plugin-react": "^6.1.1",
     "browser-id3-writer": "^6.4.0",
     "dotenv": "^17.2.3",
+    "drand-client": "^1.4.2",
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
@@ -25,6 +26,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "tlock-js": "^0.9.0",
     "vite": "^8.3.0"
   },
   "devDependencies": {

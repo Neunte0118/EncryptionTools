@@ -19,6 +19,9 @@ import { OneTimeNoteTool } from './components/OneTimeNoteTool';
 import { FileShredderTool } from './components/FileShredderTool';
 import { PgpStudioTool } from './components/PgpStudioTool';
 import { UnifiedCompressionTool } from './components/UnifiedCompressionTool';
+import { UnifiedSteganographyTool } from './components/UnifiedSteganographyTool';
+import { ChaCha20Tool } from './components/ChaCha20Tool';
+import { ActionPipelinesTool } from './components/ActionPipelinesTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -48,11 +51,14 @@ import {
   Star,
   Clock,
   Search,
+  Zap,
 } from 'lucide-react';
 
-export type Category = 'vault' | 'crypto' | 'share' | 'file' | 'verify';
+export type Category = 'action' | 'vault' | 'crypto' | 'share' | 'file' | 'verify';
 
 export type Tab =
+  // アクション (一括実行)
+  | 'action-pipeline'
   // 鍵管理
   | 'vault'
   | 'two-factor'
@@ -60,6 +66,7 @@ export type Tab =
   | 'random'
   // 暗号化・復号
   | 'aes'
+  | 'chacha'
   | 'rsa'
   | 'ecdh'
   | 'timelock'
@@ -89,6 +96,7 @@ export interface ToolItem {
 }
 
 export const CATEGORIES: { id: Category; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'action', label: 'アクション', icon: Zap },
   { id: 'vault', label: '鍵管理', icon: FolderKey },
   { id: 'crypto', label: '暗号化・復号', icon: Lock },
   { id: 'share', label: '共有', icon: Radio },

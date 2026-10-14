@@ -242,29 +242,14 @@ export const OneTimeNoteTool: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 space-y-3">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 text-amber-400 border border-amber-500/20 flex items-center justify-center shrink-0">
-            <Flame className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-100">
-                ローカル自動消滅・ワンタイムノート
-              </h2>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 border border-emerald-800/80 text-emerald-400">
-                # URLフラグメント保護
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-0.5">
-              サーバー通信ゼロ。暗号化されたメッセージと鍵はブラウザ内部のみに保持され、URLの「#」以降で相手に安全に届きます。
-            </p>
-          </div>
-        </div>
-
-        <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800 text-xs text-slate-300 leading-relaxed">
-          <strong>ゼロナレッジ（完全秘匿）保証:</strong> Webブラウザの標準仕様により、URLの末尾（<code>#note=...</code>）はWebサーバーやDNSログに絶対に送信されません。閲覧後は設定秒数でメモリ上から自己破棄されます。
+      {/* Top Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <Flame className="w-5 h-5 text-amber-400" />
+          <h2 className="text-base font-bold text-slate-100">ワンタイム・ノート</h2>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-900 border border-slate-800 text-slate-400">
+            URLフラグメント完全秘匿
+          </span>
         </div>
       </div>
 

@@ -17,6 +17,7 @@ import { TwoFactorAuthTool } from './components/TwoFactorAuthTool';
 import { BinaryConverterStudio } from './components/BinaryConverterStudio';
 import { SelfDecryptingPackageTool } from './components/SelfDecryptingPackageTool';
 import { TimelockCryptoTool } from './components/TimelockCryptoTool';
+import { OneTimeNoteTool } from './components/OneTimeNoteTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -43,6 +44,7 @@ import {
   KeyRound,
   FileCode,
   Hourglass,
+  Flame,
 } from 'lucide-react';
 
 type Tab =
@@ -53,6 +55,7 @@ type Tab =
   | 'hashes'
   | 'encryption'
   | 'self-decrypt'
+  | 'onetime-note'
   | 'timelock'
   | 'shamir'
   | 'steganography'
@@ -84,6 +87,13 @@ export default function App() {
     action: 'sign' | 'verify' | 'encrypt' | 'decrypt';
     key: KeyVaultItem;
   } | null>(null);
+
+  // Check URL fragment for note= on mount
+  useEffect(() => {
+    if (window.location.hash && window.location.hash.includes('note=')) {
+      setActiveTab('onetime-note');
+    }
+  }, []);
 
   // Close mobile drawer on ESC key
   useEffect(() => {
@@ -197,6 +207,14 @@ export default function App() {
       shortTitle: '自己復号HTML',
       description: 'ブラウザで開くだけで動くAES-256暗号化単一HTMLファイルの生成',
       icon: FileCode,
+      category: 'crypto',
+    },
+    {
+      id: 'onetime-note',
+      title: 'ワンタイム・ノート (自動消滅)',
+      shortTitle: 'ワンタイムノート',
+      description: 'URLフラグメント完全秘匿・期限切れ自動破棄・自爆タイマー共有',
+      icon: Flame,
       category: 'crypto',
     },
     {
@@ -528,6 +546,8 @@ export default function App() {
           )}
 
           {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
+
+          {activeTab === 'onetime-note' && <OneTimeNoteTool />}
 
           {activeTab === 'timelock' && <TimelockCryptoTool />}
 

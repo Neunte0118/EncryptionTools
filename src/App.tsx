@@ -8,9 +8,7 @@ import { EncryptionTool } from './components/EncryptionTool';
 import { KeyGeneratorTool } from './components/KeyGeneratorTool';
 import { RandomGeneratorTool } from './components/RandomGeneratorTool';
 import { P2PCommunicationTool } from './components/P2PCommunicationTool';
-import { WebTorrentTool } from './components/WebTorrentTool';
 import { FileMetadataTool } from './components/FileMetadataTool';
-import { GzipCompressionTool } from './components/GzipCompressionTool';
 import { SteganographyTool } from './components/SteganographyTool';
 import { ShamirSecretSharingTool } from './components/ShamirSecretSharingTool';
 import { TwoFactorAuthTool } from './components/TwoFactorAuthTool';
@@ -20,7 +18,7 @@ import { TimelockCryptoTool } from './components/TimelockCryptoTool';
 import { OneTimeNoteTool } from './components/OneTimeNoteTool';
 import { FileShredderTool } from './components/FileShredderTool';
 import { PgpStudioTool } from './components/PgpStudioTool';
-import { EncryptedZipTool } from './components/EncryptedZipTool';
+import { UnifiedCompressionTool } from './components/UnifiedCompressionTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -32,14 +30,12 @@ import {
   Binary,
   Dices,
   Radio,
-  Share2,
   ShieldCheck,
   Menu,
   X,
   ChevronRight,
+  ChevronDown,
   Shield,
-  Layers,
-  Sparkles,
   Tag,
   FileArchive,
   Eye,
@@ -49,46 +45,94 @@ import {
   Hourglass,
   Flame,
   Trash2,
-  FolderArchive,
+  Star,
+  Clock,
+  Search,
 } from 'lucide-react';
 
-type Tab =
+export type Category = 'vault' | 'crypto' | 'share' | 'file' | 'verify';
+
+export type Tab =
+  // 鍵管理
   | 'vault'
   | 'two-factor'
-  | 'binary-studio'
-  | 'signatures'
-  | 'hashes'
-  | 'encryption'
-  | 'self-decrypt'
-  | 'onetime-note'
-  | 'timelock'
-  | 'pgp'
-  | 'encrypted-zip'
-  | 'shredder'
-  | 'shamir'
-  | 'steganography'
-  | 'metadata'
-  | 'gzip'
   | 'generator'
   | 'random'
+  // 暗号化・復号
+  | 'aes'
+  | 'rsa'
+  | 'ecdh'
+  | 'timelock'
+  | 'pgp'
+  // 共有
+  | 'onetime-note'
+  | 'self-decrypt'
+  | 'shamir'
   | 'p2p'
-  | 'torrent';
+  // ファイル編集
+  | 'compression'
+  | 'shredder'
+  | 'metadata'
+  | 'steganography'
+  // 検証
+  | 'hashes'
+  | 'binary-studio'
+  | 'signatures';
 
-interface ToolItem {
+export interface ToolItem {
   id: Tab;
   title: string;
-  shortTitle: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
-  category: 'vault' | 'crypto' | 'p2p';
+  category: Category;
   badge?: string | number;
 }
+
+export const CATEGORIES: { id: Category; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+  { id: 'vault', label: '鍵管理', icon: FolderKey },
+  { id: 'crypto', label: '暗号化・復号', icon: Lock },
+  { id: 'share', label: '共有', icon: Radio },
+  { id: 'file', label: 'ファイル編集', icon: FileArchive },
+  { id: 'verify', label: '検証', icon: ShieldCheck },
+];
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('vault');
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
   const [vault, setVault] = useState<KeyVaultFile>(() => loadVaultFromLocalStorage());
+
+  // Search filter
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // Favorites (pinned tools) saved in localStorage
+  const [favorites, setFavorites] = useState<Tab[]>(() => {
+    try {
+      const saved = localStorage.getItem('lcv_pinned_favorites');
+      return saved ? JSON.parse(saved) : ['vault', 'onetime-note', 'aes'];
+    } catch {
+      return ['vault', 'onetime-note', 'aes'];
+    }
+  });
+
+  // Recent tools saved in localStorage (max 4)
+  const [recents, setRecents] = useState<Tab[]>(() => {
+    try {
+      const saved = localStorage.getItem('lcv_recent_tools');
+      return saved ? JSON.parse(saved) : ['vault', 'two-factor', 'onetime-note'];
+    } catch {
+      return ['vault', 'two-factor', 'onetime-note'];
+    }
+  });
+
+  // Category collapsed state in sidebar
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<Category, boolean>>({
+    vault: false,
+    crypto: false,
+    share: false,
+    file: false,
+    verify: false,
+  });
 
   // Routing key actions from KeyVaultManager to relevant tools
   const [selectedKeyForAction, setSelectedKeyForAction] = useState<{
@@ -131,265 +175,330 @@ export default function App() {
     saveVaultToLocalStorage(updated);
   };
 
+  const handleToggleFavorite = (tab: Tab, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFavorites((prev) => {
+      const exists = prev.includes(tab);
+      const next = exists ? prev.filter((id) => id !== tab) : [...prev, tab];
+      try {
+        localStorage.setItem('lcv_pinned_favorites', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  const handleSelectTab = (tab: Tab) => {
+    setActiveTab(tab);
+    setIsMobileMenuOpen(false);
+
+    // Update Recents
+    setRecents((prev) => {
+      const filtered = prev.filter((id) => id !== tab);
+      const next = [tab, ...filtered].slice(0, 4);
+      try {
+        localStorage.setItem('lcv_recent_tools', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
+
   const handleSelectKeyForAction = (
     action: 'sign' | 'verify' | 'encrypt' | 'decrypt',
     key: KeyVaultItem
   ) => {
     setSelectedKeyForAction({ action, key });
     if (action === 'sign' || action === 'verify') {
-      setActiveTab('signatures');
+      handleSelectTab('signatures');
     } else if (action === 'encrypt' || action === 'decrypt') {
-      setActiveTab('encryption');
+      if (key.type === 'aes-gcm') {
+        handleSelectTab('aes');
+      } else if (key.type === 'rsa-oaep') {
+        handleSelectTab('rsa');
+      } else {
+        handleSelectTab('aes');
+      }
     }
   };
 
-  const handleToggleMenu = () => {
-    if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
-      setIsDesktopSidebarOpen((prev) => !prev);
-    } else {
-      setIsMobileMenuOpen((prev) => !prev);
-    }
+  const toggleCategoryCollapse = (cat: Category) => {
+    setCollapsedCategories((prev) => ({
+      ...prev,
+      [cat]: !prev[cat],
+    }));
   };
 
   const tools: ToolItem[] = [
+    // 1. 鍵管理
     {
       id: 'vault',
-      title: '鍵管理ファイル',
-      shortTitle: '鍵管理',
-      description: '登録された暗号鍵の一元管理・インポート・エクスポート',
+      title: '鍵保管庫',
+      description: '単一暗号化ファイルによる鍵ペア・共通鍵の安全な保管と管理',
       icon: FolderKey,
       category: 'vault',
-      badge: vault.keys.length > 0 ? `${vault.keys.length}` : undefined,
+      badge: vault.keys.length > 0 ? vault.keys.length : undefined,
+    },
+    {
+      id: 'two-factor',
+      title: '二要素認証',
+      description: 'TOTP ワンタイム認証コード生成・秘密鍵インポート',
+      icon: KeyRound,
+      category: 'vault',
     },
     {
       id: 'generator',
-      title: '鍵ペア生成',
-      shortTitle: '鍵生成',
-      description: 'RSA 2048/4096bit および ECC 楕円曲線鍵ペアの生成',
+      title: '鍵生成',
+      description: 'RSA / ECDSA / ECDH / AES-GCM 鍵ペア生成とエクスポート',
       icon: PlusCircle,
       category: 'vault',
     },
     {
       id: 'random',
-      title: '乱数・UUID生成',
-      shortTitle: '乱数/UUID',
-      description: 'CSPRNG 暗号論的疑似乱数・UUID・ランダムバイト列生成',
+      title: 'パスワード・乱数生成',
+      description: '暗号論的疑似乱数（CSPRNG）・パスワード・UUID生成',
       icon: Dices,
       category: 'vault',
     },
+
+    // 2. 暗号化・復号
     {
-      id: 'two-factor',
-      title: '二要素認証',
-      shortTitle: '2要素認証',
-      description: 'ワンタイム認証コード生成・検証',
-      icon: KeyRound,
-      category: 'crypto',
-    },
-    {
-      id: 'binary-studio',
-      title: 'バイナリ変換スタジオ',
-      shortTitle: 'バイナリ変換',
-      description: 'Hex / Base64 / Base32 / Base58 / 2進 / 10進 / Hexダンプ / エンディアン解析',
-      icon: Binary,
-      category: 'crypto',
-    },
-    {
-      id: 'signatures',
-      title: '電子署名・検証',
-      shortTitle: '電子署名',
-      description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
-      icon: FileSignature,
-      category: 'crypto',
-    },
-    {
-      id: 'encryption',
-      title: '暗号化・復号',
-      shortTitle: '暗号化/復号',
-      description: 'AES-GCM / RSA-OAEP / ハイブリッド暗号 / ECDH 鍵共有',
+      id: 'aes',
+      title: 'AES暗号',
+      description: 'AES-256-GCM 共通鍵によるテキスト・ファイルの高速暗号化と復号',
       icon: Lock,
       category: 'crypto',
     },
     {
-      id: 'self-decrypt',
-      title: '自己復号HTML生成',
-      shortTitle: '自己復号HTML',
-      description: 'ブラウザで開くだけで動くAES-256暗号化単一HTMLファイルの生成',
-      icon: FileCode,
+      id: 'rsa',
+      title: 'RSA暗号',
+      description: 'RSA-OAEP 公開鍵暗号・秘密鍵復号（テキスト・ハイブリッド）',
+      icon: Lock,
       category: 'crypto',
     },
     {
-      id: 'onetime-note',
-      title: 'ワンタイム・ノート (自動消滅)',
-      shortTitle: 'ワンタイムノート',
-      description: 'URLフラグメント完全秘匿・期限切れ自動破棄・自爆タイマー共有',
-      icon: Flame,
+      id: 'ecdh',
+      title: '楕円曲線暗号',
+      description: 'ECDH（P-256 / P-384 / P-521）による共有秘密の導出',
+      icon: Lock,
       category: 'crypto',
     },
     {
       id: 'timelock',
-      title: 'タイムロック暗号 (drand)',
-      shortTitle: 'タイムロック',
-      description: '未来の指定時刻まで絶対に解錠できない時限暗号・復号 (tlock)',
+      title: 'タイムロック暗号',
+      description: 'drand Quicknet 分散ビーコンによる未来指定時刻までの時限封印',
       icon: Hourglass,
       category: 'crypto',
     },
     {
       id: 'pgp',
-      title: 'PGP/GPG 暗号化・鍵スタジオ',
-      shortTitle: 'PGPスタジオ',
-      description: 'RFC 4880 OpenPGP 鍵生成・ASCIIアーマー暗号化・復号・署名検証',
+      title: 'PGP',
+      description: 'RFC 4880 OpenPGP 鍵生成・ASCIIアーマー暗号化・復号・署名',
       icon: Shield,
       category: 'crypto',
     },
+
+    // 3. 共有
     {
-      id: 'encrypted-zip',
-      title: '暗号化 ZIP アーカイバー',
-      shortTitle: '暗号化ZIP',
-      description: 'パスワード付き暗号化ZIPの作成・解凍 (AES-256 / ZipCrypto)',
-      icon: FolderArchive,
-      category: 'crypto',
+      id: 'onetime-note',
+      title: 'ワンタイム・ノート',
+      description: 'URLフラグメント完全秘匿・有効期限切れ自動破棄・自爆タイマー',
+      icon: Flame,
+      category: 'share',
     },
     {
-      id: 'shredder',
-      title: 'ファイル・シュレッダー (完全抹消)',
-      shortTitle: 'シュレッダー',
-      description: 'DoD 5220.22-M / Gutmann 準拠の不可逆ノイズ上書き破壊',
-      icon: Trash2,
-      category: 'crypto',
-    },
-    {
-      id: 'hashes',
-      title: 'ハッシュ確認',
-      shortTitle: 'ハッシュ',
-      description: 'SHA-256 / SHA-512 / SHA-384 / SHA-1 / MD5 ハッシュ値検証',
-      icon: Hash,
-      category: 'crypto',
+      id: 'self-decrypt',
+      title: '自己復号ファイル',
+      description: 'ブラウザで開くだけで動く単一自己完結HTMLパッケージの生成',
+      icon: FileCode,
+      category: 'share',
     },
     {
       id: 'shamir',
       title: 'シャミアの秘密分散法',
-      shortTitle: '秘密分散法',
-      description: '(k, n) 閾値法による秘密分割 & 復元',
+      description: '秘密情報を (k, n) 閾値シェアに分割・復元',
       icon: Split,
-      category: 'crypto',
-    },
-    {
-      id: 'steganography',
-      title: '画像ステガノグラフィ',
-      shortTitle: 'ステガノ',
-      description: '画像ピクセル(LSB)へのデータ不可視埋め込み・AES暗号化抽出',
-      icon: Eye,
-      category: 'crypto',
-    },
-    {
-      id: 'metadata',
-      title: 'メタ情報編集',
-      shortTitle: 'メタ情報編集',
-      description: '画像(Exif)・音声・動画・PDFの編集と完全削除',
-      icon: Tag,
-      category: 'crypto',
-    },
-    {
-      id: 'gzip',
-      title: 'Gzip 圧縮・解凍',
-      shortTitle: 'Gzip圧縮',
-      description: '標準Web API (CompressionStream) による高速圧縮',
-      icon: FileArchive,
-      category: 'crypto',
+      category: 'share',
     },
     {
       id: 'p2p',
       title: 'P2P通信',
-      shortTitle: 'P2P通信',
-      description: 'WebRTC 完全サーバーレス直接通信 (チャット・ファイル・鍵交換)',
+      description: 'WebRTC 完全サーバーレス直接通信（チャット・ファイル・鍵交換）',
       icon: Radio,
-      category: 'p2p',
+      category: 'share',
+    },
+
+    // 4. ファイル編集
+    {
+      id: 'compression',
+      title: 'ファイル圧縮・展開',
+      description: 'AES-256 暗号化ZIP作成・解凍および高速Gzipストリーミング',
+      icon: FileArchive,
+      category: 'file',
     },
     {
-      id: 'torrent',
-      title: 'WebTorrent',
-      shortTitle: 'WebTorrent',
-      description: 'ブラウザ間でのP2P分散ファイル共有 & シード配信',
-      icon: Share2,
-      category: 'p2p',
+      id: 'shredder',
+      title: 'シュレッダー',
+      description: 'DoD 5220.22-M / Gutmann 準拠の不可逆ノイズ上書き破壊',
+      icon: Trash2,
+      category: 'file',
+    },
+    {
+      id: 'metadata',
+      title: 'メタ情報編集',
+      description: '画像Exif・音声・動画・PDFメタデータの閲覧・編集・完全消去',
+      icon: Tag,
+      category: 'file',
+    },
+    {
+      id: 'steganography',
+      title: 'ステガノグラフィ',
+      description: '画像ピクセル（LSB）へのデータ不可視埋め込み・抽出',
+      icon: Eye,
+      category: 'file',
+    },
+
+    // 5. 検証
+    {
+      id: 'hashes',
+      title: 'ハッシュ値生成・検証',
+      description: 'SHA-256 / SHA-512 / SHA-384 / SHA-1 / MD5 ハッシュ計算と改竄照合',
+      icon: Hash,
+      category: 'verify',
+    },
+    {
+      id: 'binary-studio',
+      title: 'バイナリ変換',
+      description: 'Hex / Base64 / Base58 / 2進 / 10進数相互変換とHexダンプ解析',
+      icon: Binary,
+      category: 'verify',
+    },
+    {
+      id: 'signatures',
+      title: '電子署名作成・検証',
+      description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
+      icon: FileSignature,
+      category: 'verify',
     },
   ];
 
   const currentTool = tools.find((t) => t.id === activeTab) || tools[0];
 
-  const handleSelectTab = (tab: Tab) => {
-    setActiveTab(tab);
-    setIsMobileMenuOpen(false);
-  };
+  // Filter tools by search query if any
+  const filteredTools = searchQuery.trim()
+    ? tools.filter(
+        (t) =>
+          t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          t.description.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : tools;
 
-  // Helper renderer for menu category items
-  const renderNavGroup = (category: 'vault' | 'crypto' | 'p2p', label: string) => {
-    const groupTools = tools.filter((t) => t.category === category);
+  // Render Category in Nav
+  const renderNavGroup = (category: Category, label: string) => {
+    const groupTools = filteredTools.filter((t) => t.category === category);
+    if (groupTools.length === 0) return null;
+
+    const isCollapsed = collapsedCategories[category] && !searchQuery.trim();
+
     return (
-      <div className="space-y-1">
-        <div className="px-2.5 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
-          {label}
-        </div>
-        {groupTools.map((tool) => {
-          const Icon = tool.icon;
-          const isActive = activeTab === tool.id;
-          return (
-            <button
-              key={tool.id}
-              onClick={() => handleSelectTab(tool.id)}
-              className={`w-full text-left flex items-start gap-3 p-2 rounded-lg transition-all ${
-                isActive
-                  ? 'bg-indigo-600/15 border border-indigo-500/50 text-indigo-200 shadow-sm'
-                  : 'hover:bg-slate-800/70 text-slate-300 border border-transparent'
-              }`}
-            >
-              <div
-                className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
-                  isActive
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between">
-                  <span
-                    className={`text-xs font-semibold ${
-                      isActive ? 'text-indigo-200' : 'text-slate-200'
+      <div key={category} className="space-y-1">
+        <button
+          type="button"
+          onClick={() => toggleCategoryCollapse(category)}
+          className="w-full flex items-center justify-between px-2.5 py-1 text-[11px] font-bold tracking-wider text-slate-400 hover:text-slate-200 transition-colors uppercase select-none"
+        >
+          <span>{label}</span>
+          <ChevronDown
+            className={`w-3.5 h-3.5 transition-transform duration-200 ${
+              isCollapsed ? '-rotate-90 text-slate-500' : 'text-slate-400'
+            }`}
+          />
+        </button>
+
+        {!isCollapsed && (
+          <div className="space-y-0.5">
+            {groupTools.map((tool) => {
+              const Icon = tool.icon;
+              const isActive = activeTab === tool.id;
+              const isFav = favorites.includes(tool.id);
+
+              return (
+                <div
+                  key={tool.id}
+                  onClick={() => handleSelectTab(tool.id)}
+                  className={`group relative w-full text-left flex items-start gap-2.5 p-2 rounded-lg cursor-pointer transition-all ${
+                    isActive
+                      ? 'bg-indigo-600/15 border border-indigo-500/50 text-indigo-200 shadow-sm'
+                      : 'hover:bg-slate-800/70 text-slate-300 border border-transparent'
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-md flex items-center justify-center shrink-0 mt-0.5 ${
+                      isActive
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-slate-800 text-slate-400 group-hover:text-slate-200'
                     }`}
                   >
-                    {tool.title}
-                  </span>
-                  {tool.badge && (
-                    <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-indigo-950 text-indigo-300 border border-indigo-800/60">
-                      {tool.badge}
-                    </span>
-                  )}
+                    <Icon className="w-3.5 h-3.5" />
+                  </div>
+
+                  <div className="flex-1 min-w-0 pr-6">
+                    <div className="flex items-center justify-between">
+                      <span
+                        className={`text-xs font-semibold truncate ${
+                          isActive ? 'text-indigo-200' : 'text-slate-200'
+                        }`}
+                      >
+                        {tool.title}
+                      </span>
+                      {tool.badge !== undefined && (
+                        <span className="text-[10px] px-1.5 py-0.2 rounded-full font-mono bg-indigo-950 text-indigo-300 border border-indigo-800/60">
+                          {tool.badge}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
+                      {tool.description}
+                    </p>
+                  </div>
+
+                  {/* Pin / Favorite Star */}
+                  <button
+                    type="button"
+                    onClick={(e) => handleToggleFavorite(tool.id, e)}
+                    className={`absolute right-2 top-2.5 p-1 rounded transition-opacity ${
+                      isFav
+                        ? 'text-amber-400 opacity-100'
+                        : 'text-slate-600 hover:text-slate-300 opacity-0 group-hover:opacity-100'
+                    }`}
+                    title={isFav ? 'ピン留めを解除' : 'お気に入りにピン留め'}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${isFav ? 'fill-amber-400' : ''}`} />
+                  </button>
                 </div>
-                <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
-                  {tool.description}
-                </p>
-              </div>
-            </button>
-          );
-        })}
+              );
+            })}
+          </div>
+        )}
       </div>
     );
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-indigo-600 selection:text-white">
-      {/* Top Header Bar - Clean & Hamburger Menu Only */}
+      {/* Top Header Bar */}
       <header className="border-b border-slate-800 bg-slate-900/90 backdrop-blur-md sticky top-0 z-30">
         <div className="w-full px-3 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-14 sm:h-16">
             {/* Left: Hamburger Button & App Brand */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* Hamburger Button (Toggles Left Sidebar on PC, Opens Drawer on Mobile) */}
               <button
                 type="button"
-                onClick={handleToggleMenu}
+                onClick={() => {
+                  if (typeof window !== 'undefined' && window.innerWidth >= 1024) {
+                    setIsDesktopSidebarOpen((prev) => !prev);
+                  } else {
+                    setIsMobileMenuOpen((prev) => !prev);
+                  }
+                }}
                 className="p-2 -ml-1 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800 active:bg-slate-700/80 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 aria-label="メニューの表示切り替え"
                 title={isDesktopSidebarOpen ? 'メニューを閉じる' : 'メニューを開く'}
@@ -417,7 +526,7 @@ export default function App() {
               {/* Active Tool Badge Pill in Header */}
               <div className="flex items-center gap-1.5 ml-1 sm:ml-2">
                 <span className="text-slate-600 hidden xs:inline">/</span>
-                <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 flex items-center gap-1.5 truncate max-w-[150px] sm:max-w-none">
+                <span className="text-xs px-2.5 py-0.5 rounded-full font-medium bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 flex items-center gap-1.5 truncate max-w-[160px] sm:max-w-none">
                   <currentTool.icon className="w-3.5 h-3.5 shrink-0 text-indigo-400" />
                   <span className="truncate">{currentTool.title}</span>
                 </span>
@@ -426,13 +535,12 @@ export default function App() {
 
             {/* Right: Security Indicator & Quick Vault Key Count */}
             <div className="flex items-center gap-2 sm:gap-3">
-              {/* PWA Install Button */}
               <PWAInstallButton variant="header" />
 
               <button
                 onClick={() => handleSelectTab('vault')}
                 className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs bg-slate-800/80 hover:bg-slate-700/80 text-slate-300 border border-slate-700/70 transition-colors"
-                title="鍵管理ファイルを開く"
+                title="鍵保管庫を開く"
               >
                 <FolderKey className="w-3.5 h-3.5 text-indigo-400" />
                 <span className="font-mono font-medium">{vault.keys.length}</span>
@@ -443,42 +551,87 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Workspace Layout: Left Vertical Tab Bar + Content Area */}
+      {/* Main Workspace Layout */}
       <div className="flex-1 flex w-full">
-        {/* Desktop Left Vertical Tab Bar (Visible on lg+ screens when toggled open) */}
+        {/* Desktop Left Vertical Tab Bar */}
         {isDesktopSidebarOpen && (
           <aside
             className="hidden lg:flex flex-col w-64 xl:w-72 border-r border-slate-800 bg-slate-900/60 shrink-0 sticky top-14 sm:top-16 h-[calc(100vh-3.5rem)] sm:h-[calc(100vh-4rem)] overflow-y-auto"
-            aria-label="垂直タブバーメニュー"
+            aria-label="ツール選択サイドバー"
           >
-            {/* Vault Summary Card in Sidebar */}
+            {/* Search Input Box */}
             <div className="p-3 border-b border-slate-800/80">
-              <div
-                onClick={() => handleSelectTab('vault')}
-                className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/50 hover:bg-slate-800 border border-slate-700/60 cursor-pointer transition-colors"
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className="w-7 h-7 rounded bg-indigo-950 text-indigo-300 flex items-center justify-center border border-indigo-800/60 shrink-0">
-                    <FolderKey className="w-3.5 h-3.5" />
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-slate-200">
-                      {vault.vaultName || '鍵管理ファイル'}
-                    </div>
-                    <div className="text-[10px] text-slate-400 font-mono">
-                      {vault.keys.length} 件保存中
-                    </div>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+              <div className="relative">
+                <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="ツールをクイック検索..."
+                  className="w-full pl-8 pr-3 py-1.5 bg-slate-950/80 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
               </div>
             </div>
 
-            {/* Vertical Menu Groups */}
-            <div className="flex-1 p-3 space-y-4">
-              {renderNavGroup('vault', '鍵管理 & 生成')}
-              {renderNavGroup('crypto', '暗号化 & デジタル署名')}
-              {renderNavGroup('p2p', 'P2P 分散通信')}
+            {/* Quick Favorites (Pinned) */}
+            {!searchQuery.trim() && favorites.length > 0 && (
+              <div className="p-3 border-b border-slate-800/80 space-y-1.5">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider px-1">
+                  <Star className="w-3 h-3 fill-amber-400" />
+                  <span>お気に入り (ピン留め)</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {favorites.map((favId) => {
+                    const tool = tools.find((t) => t.id === favId);
+                    if (!tool) return null;
+                    const isActive = activeTab === tool.id;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => handleSelectTab(tool.id)}
+                        className={`px-2 py-1 rounded text-[11px] font-medium flex items-center gap-1.5 border transition-all ${
+                          isActive
+                            ? 'bg-indigo-600/25 border-indigo-500 text-indigo-200 shadow-sm'
+                            : 'bg-slate-950/60 border-slate-800 text-slate-300 hover:border-slate-700'
+                        }`}
+                      >
+                        <tool.icon className="w-3 h-3 text-indigo-400" />
+                        <span>{tool.title}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Recent Tools */}
+            {!searchQuery.trim() && recents.length > 0 && (
+              <div className="px-3 pt-2 pb-2 border-b border-slate-800/80 space-y-1">
+                <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1">
+                  <Clock className="w-3 h-3 text-slate-400" />
+                  <span>最近使用したツール</span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {recents.map((recId) => {
+                    const tool = tools.find((t) => t.id === recId);
+                    if (!tool) return null;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => handleSelectTab(tool.id)}
+                        className="px-2 py-0.5 rounded text-[10px] text-slate-400 bg-slate-950/40 border border-slate-800 hover:text-slate-200 hover:border-slate-700 transition-colors"
+                      >
+                        {tool.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Category Groups */}
+            <div className="flex-1 p-3 space-y-3">
+              {CATEGORIES.map((cat) => renderNavGroup(cat.id, cat.label))}
 
               <div className="pt-2 border-t border-slate-800/80">
                 <PWAInstallButton variant="sidebar" />
@@ -489,12 +642,12 @@ export default function App() {
             <div className="p-3 border-t border-slate-800 bg-slate-950/40 text-[11px] text-slate-400 flex items-center justify-between">
               <span className="flex items-center gap-1.5 text-emerald-400 font-mono text-[10px]">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                WebCrypto Native
+                100% Client-Side Native
               </span>
               <button
                 onClick={() => setIsDesktopSidebarOpen(false)}
                 className="p-1 rounded text-slate-500 hover:text-slate-300 hover:bg-slate-800 transition-colors"
-                title="垂直タブメニューを隠す"
+                title="サイドバーを隠す"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -502,21 +655,11 @@ export default function App() {
           </aside>
         )}
 
-        {/* Center / Main Content Area */}
-        <main className="flex-1 min-w-0 max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-6">
-          {/* Quick reopen button on desktop when sidebar is hidden */}
-          {!isDesktopSidebarOpen && (
-            <div className="hidden lg:flex items-center mb-4">
-              <button
-                onClick={() => setIsDesktopSidebarOpen(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 text-xs text-slate-300 hover:text-white transition-colors shadow-sm"
-              >
-                <Menu className="w-4 h-4 text-indigo-400" />
-                <span>左側メニューを表示</span>
-              </button>
-            </div>
-          )}
+        {/* Content Area */}
+        <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
+          <OfflineIndicator />
 
+          {/* 1. 鍵管理 */}
           {activeTab === 'vault' && (
             <KeyVaultManager
               vault={vault}
@@ -526,6 +669,89 @@ export default function App() {
           )}
 
           {activeTab === 'two-factor' && <TwoFactorAuthTool />}
+
+          {activeTab === 'generator' && (
+            <KeyGeneratorTool
+              vault={vault}
+              onVaultChange={handleVaultChange}
+              onNavigateToVault={() => handleSelectTab('vault')}
+            />
+          )}
+
+          {activeTab === 'random' && <RandomGeneratorTool />}
+
+          {/* 2. 暗号化・復号 (アルゴリズム個別表示) */}
+          {activeTab === 'aes' && (
+            <EncryptionTool
+              vault={vault}
+              initialSubTab="aes"
+              selectedKey={
+                selectedKeyForAction?.action === 'encrypt' ||
+                selectedKeyForAction?.action === 'decrypt'
+                  ? (selectedKeyForAction as any)
+                  : null
+              }
+              onClearSelectedKey={() => setSelectedKeyForAction(null)}
+            />
+          )}
+
+          {activeTab === 'rsa' && (
+            <EncryptionTool
+              vault={vault}
+              initialSubTab="rsa"
+              selectedKey={
+                selectedKeyForAction?.action === 'encrypt' ||
+                selectedKeyForAction?.action === 'decrypt'
+                  ? (selectedKeyForAction as any)
+                  : null
+              }
+              onClearSelectedKey={() => setSelectedKeyForAction(null)}
+            />
+          )}
+
+          {activeTab === 'ecdh' && (
+            <EncryptionTool
+              vault={vault}
+              initialSubTab="ecdh"
+              selectedKey={
+                selectedKeyForAction?.action === 'encrypt' ||
+                selectedKeyForAction?.action === 'decrypt'
+                  ? (selectedKeyForAction as any)
+                  : null
+              }
+              onClearSelectedKey={() => setSelectedKeyForAction(null)}
+            />
+          )}
+
+          {activeTab === 'timelock' && <TimelockCryptoTool />}
+
+          {activeTab === 'pgp' && <PgpStudioTool />}
+
+          {/* 3. 共有 */}
+          {activeTab === 'onetime-note' && <OneTimeNoteTool />}
+
+          {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
+
+          {activeTab === 'shamir' && <ShamirSecretSharingTool />}
+
+          {activeTab === 'p2p' && (
+            <P2PCommunicationTool
+              vault={vault}
+              onVaultChange={handleVaultChange}
+            />
+          )}
+
+          {/* 4. ファイル編集 */}
+          {activeTab === 'compression' && <UnifiedCompressionTool />}
+
+          {activeTab === 'shredder' && <FileShredderTool />}
+
+          {activeTab === 'metadata' && <FileMetadataTool />}
+
+          {activeTab === 'steganography' && <SteganographyTool />}
+
+          {/* 5. 検証 */}
+          {activeTab === 'hashes' && <HashTool />}
 
           {activeTab === 'binary-studio' && <BinaryConverterStudio />}
 
@@ -541,76 +767,10 @@ export default function App() {
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
             />
           )}
-
-          {activeTab === 'hashes' && <HashTool />}
-
-          {activeTab === 'shamir' && (
-            <ShamirSecretSharingTool
-              vault={vault}
-              onImportToVault={(keyItem) => {
-                const updatedVault: KeyVaultFile = {
-                  ...vault,
-                  keys: [keyItem, ...vault.keys],
-                  exportedAt: new Date().toISOString(),
-                };
-                handleVaultChange(updatedVault);
-              }}
-            />
-          )}
-
-          {activeTab === 'steganography' && <SteganographyTool />}
-
-          {activeTab === 'metadata' && <FileMetadataTool />}
-
-          {activeTab === 'gzip' && <GzipCompressionTool />}
-
-          {activeTab === 'encryption' && (
-            <EncryptionTool
-              vault={vault}
-              selectedKey={
-                selectedKeyForAction?.action === 'encrypt' ||
-                selectedKeyForAction?.action === 'decrypt'
-                  ? (selectedKeyForAction as any)
-                  : null
-              }
-              onClearSelectedKey={() => setSelectedKeyForAction(null)}
-            />
-          )}
-
-          {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
-
-          {activeTab === 'onetime-note' && <OneTimeNoteTool />}
-
-          {activeTab === 'timelock' && <TimelockCryptoTool />}
-
-          {activeTab === 'pgp' && <PgpStudioTool />}
-
-          {activeTab === 'encrypted-zip' && <EncryptedZipTool />}
-
-          {activeTab === 'shredder' && <FileShredderTool />}
-
-          {activeTab === 'generator' && (
-            <KeyGeneratorTool
-              vault={vault}
-              onVaultChange={handleVaultChange}
-              onNavigateToVault={() => setActiveTab('vault')}
-            />
-          )}
-
-          {activeTab === 'random' && <RandomGeneratorTool />}
-
-          {activeTab === 'p2p' && (
-            <P2PCommunicationTool
-              vault={vault}
-              onVaultChange={handleVaultChange}
-            />
-          )}
-
-          {activeTab === 'torrent' && <WebTorrentTool />}
         </main>
       </div>
 
-      {/* Mobile Navigation Drawer (For screens < lg) */}
+      {/* Mobile Navigation Drawer */}
       <div
         className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-200 ${
           isMobileMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -634,47 +794,35 @@ export default function App() {
             </div>
             <div>
               <h2 className="font-bold text-sm text-slate-100">Local Crypto Vault</h2>
-              <p className="text-[11px] text-slate-400">暗号 &amp; P2P スタジオ</p>
+              <p className="text-[11px] text-slate-400">暗号 &amp; セキュリティスタジオ</p>
             </div>
           </div>
 
           <button
             onClick={() => setIsMobileMenuOpen(false)}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            aria-label="メニューを閉じる"
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Vault Summary Card in Drawer */}
-        <div className="p-3 border-b border-slate-800/80 bg-slate-950/20">
-          <div
-            onClick={() => handleSelectTab('vault')}
-            className="flex items-center justify-between p-2.5 rounded-lg bg-slate-800/60 hover:bg-slate-800 border border-slate-700/60 cursor-pointer transition-colors"
-          >
-            <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded bg-indigo-950 text-indigo-300 flex items-center justify-center border border-indigo-800/60">
-                <FolderKey className="w-4 h-4" />
-              </div>
-              <div>
-                <div className="text-xs font-semibold text-slate-200">
-                  {vault.vaultName || '鍵管理ファイル'}
-                </div>
-                <div className="text-[10px] text-slate-400 font-mono">
-                  {vault.keys.length} 件の鍵を保存中
-                </div>
-              </div>
-            </div>
-            <ChevronRight className="w-4 h-4 text-slate-500" />
+        {/* Mobile Search Input */}
+        <div className="p-3 border-b border-slate-800/80">
+          <div className="relative">
+            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2.5 text-slate-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="ツールを検索..."
+              className="w-full pl-8 pr-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            />
           </div>
         </div>
 
-        {/* Drawer Navigation Categories */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-4">
-          {renderNavGroup('vault', '鍵管理 & 生成')}
-          {renderNavGroup('crypto', '暗号化 & デジタル署名')}
-          {renderNavGroup('p2p', 'P2P 分散通信')}
+        {/* Mobile Drawer Navigation Groups */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {CATEGORIES.map((cat) => renderNavGroup(cat.id, cat.label))}
         </div>
 
         {/* Drawer Footer */}
@@ -687,20 +835,11 @@ export default function App() {
               100% Client-Side WebCrypto
             </div>
             <p className="text-[10px] text-slate-500">
-              秘密鍵・平文データは外部サーバーに一切送信されません。
+              外部サーバーへデータが送信されることは一切ありません
             </p>
           </div>
         </div>
       </aside>
-
-      {/* Offline Mode Alert */}
-      <OfflineIndicator />
-
-      {/* Footer */}
-      <footer className="border-t border-slate-900 py-3 text-center text-xs text-slate-500 px-4">
-        Web Crypto API (SubtleCrypto) Native Implementation &bull; 完全ローカル実行
-      </footer>
     </div>
   );
 }
-

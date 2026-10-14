@@ -33,14 +33,22 @@ interface Props {
     key: KeyVaultItem;
   } | null;
   onClearSelectedKey?: () => void;
+  initialSubTab?: 'file' | 'rsa' | 'aes' | 'ecdh';
 }
 
 export const EncryptionTool: React.FC<Props> = ({
   vault,
   selectedKey,
   onClearSelectedKey,
+  initialSubTab = 'aes',
 }) => {
-  const [activeSubTab, setActiveSubTab] = useState<'file' | 'rsa' | 'aes' | 'ecdh'>('file');
+  const [activeSubTab, setActiveSubTab] = useState<'file' | 'rsa' | 'aes' | 'ecdh'>(initialSubTab);
+
+  useEffect(() => {
+    if (initialSubTab) {
+      setActiveSubTab(initialSubTab);
+    }
+  }, [initialSubTab]);
 
   // --- RSA-OAEP State ---
   const [rsaMode, setRsaMode] = useState<'encrypt' | 'decrypt'>('encrypt');

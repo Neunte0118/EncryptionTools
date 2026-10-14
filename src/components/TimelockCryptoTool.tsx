@@ -49,6 +49,8 @@ export const TimelockCryptoTool: React.FC = () => {
   // Time Lock Mode: preset duration or specific date/time
   const [lockMode, setLockMode] = useState<'duration' | 'datetime'>('duration');
   const [durationMinutes, setDurationMinutes] = useState<number>(10);
+  const [customDurationValue, setCustomDurationValue] = useState<number>(1);
+  const [customDurationUnit, setCustomDurationUnit] = useState<'minutes' | 'hours' | 'days' | 'weeks'>('hours');
   const [targetDateTime, setTargetDateTime] = useState<string>(() => {
     const d = new Date(Date.now() + 60 * 60 * 1000);
     return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
@@ -64,6 +66,7 @@ export const TimelockCryptoTool: React.FC = () => {
 
   // Decrypt State
   const [ciphertextInput, setCiphertextInput] = useState('');
+  const [decryptLoadedFileName, setDecryptLoadedFileName] = useState<string | null>(null);
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [decryptResult, setDecryptResult] = useState<{
     text?: string;
@@ -83,6 +86,7 @@ export const TimelockCryptoTool: React.FC = () => {
   // Copy Feedback
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const encryptFileInputRef = useRef<HTMLInputElement>(null);
+  const decryptFileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch current drand round on mount and periodically
   const refreshBeacon = async () => {
@@ -136,6 +140,24 @@ export const TimelockCryptoTool: React.FC = () => {
       setParsedRoundInfo(null);
     }
   }, [ciphertextInput, currentRound]);
+
+  const handleDecryptFileSelected = (file: File) => {
+    setDecryptError('');
+    setDecryptResult(null);
+    setDecryptLoadedFileName(file.name);
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const text = e.target?.result as string;
+      if (text) {
+        setCiphertextInput(text);
+      }
+    };
+    reader.onerror = () => {
+      setDecryptError('ファイルの読み込みに失敗しました');
+    };
+    reader.readAsText(file);
+  };
 
   // Handle Encrypt
   const handleEncrypt = async () => {
@@ -397,16 +419,44 @@ export const TimelockCryptoTool: React.FC = () => {
                   ))}
                 </div>
 
-                <div className="flex items-center gap-3 pt-1">
-                  <span className="text-xs text-slate-400">カスタム指定:</span>
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/80">
+                  <span className="text-xs text-slate-400 font-medium">カスタム指定:</span>
                   <input
                     type="number"
                     min={1}
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(Math.max(1, parseInt(e.target.value, 10) || 1))}
-                    className="w-24 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                    value={customDurationValue}
+                    onChange={(e) => {
+                      const val = Math.max(1, parseInt(e.target.value, 10) || 1);
+                      setCustomDurationValue(val);
+                      let factor = 1;
+                      if (customDurationUnit === 'hours') factor = 60;
+                      else if (customDurationUnit === 'days') factor = 1440;
+                      else if (customDurationUnit === 'weeks') factor = 10080;
+                      setDurationMinutes(val * factor);
+                    }}
+                    className="w-20 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
-                  <span className="text-xs text-slate-400">分後</span>
+                  <select
+                    value={customDurationUnit}
+                    onChange={(e) => {
+                      const unit = e.target.value as 'minutes' | 'hours' | 'days' | 'weeks';
+                      setCustomDurationUnit(unit);
+                      let factor = 1;
+                      if (unit === 'hours') factor = 60;
+                      else if (unit === 'days') factor = 1440;
+                      else if (unit === 'weeks') factor = 10080;
+                      setDurationMinutes(customDurationValue * factor);
+                    }}
+                    className="px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="minutes">分後</option>
+                    <option value="hours">時間後</option>
+                    <option value="days">日後</option>
+                    <option value="weeks">週間後</option>
+                  </select>
+                  <span className="text-[11px] text-indigo-400 font-mono ml-auto">
+                    計: {durationMinutes.toLocaleString()} 分間
+                  </span>
                 </div>
               </div>
             ) : (
@@ -635,17 +685,87 @@ export const TimelockCryptoTool: React.FC = () => {
               <span>暗号文の入力 (AGE / tlock 形式)</span>
             </h3>
 
-            <div className="space-y-2">
-              <label className="block text-xs font-medium text-slate-300">
-                タイムロック暗号文を貼り付け:
-              </label>
-              <textarea
-                value={ciphertextInput}
-                onChange={(e) => setCiphertextInput(e.target.value)}
-                rows={9}
-                placeholder="-----BEGIN AGE ENCRYPTED FILE-----&#10;...&#10;-----END AGE ENCRYPTED FILE-----"
-                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
-              />
+            {/* File drop or text paste */}
+            <div className="space-y-3">
+              <div>
+                <input
+                  ref={decryptFileInputRef}
+                  type="file"
+                  accept=".age,.tlock,text/plain"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) handleDecryptFileSelected(file);
+                  }}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => decryptFileInputRef.current?.click()}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) handleDecryptFileSelected(file);
+                  }}
+                  className="border-2 border-dashed border-slate-800 hover:border-indigo-500/60 rounded-lg p-4 text-center cursor-pointer bg-slate-950/60 transition-colors"
+                >
+                  <Upload className="w-6 h-6 text-indigo-400 mx-auto mb-1.5" />
+                  {decryptLoadedFileName ? (
+                    <div className="space-y-0.5">
+                      <div className="text-xs font-semibold text-emerald-300 flex items-center justify-center gap-1.5">
+                        <FileCheck className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>{decryptLoadedFileName}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500">
+                        クリックまたは再ドロップで別のファイルに変更
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-xs font-semibold text-slate-200">
+                        .age / .tlock 暗号ファイルをドロップまたはクリックして選択
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">
+                        ドラッグ＆ドロップで自動的に暗号テキストを読み込みます
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-medium text-slate-300">
+                    または暗号文を直接貼り付け:
+                  </label>
+                  {ciphertextInput && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCiphertextInput('');
+                        setDecryptLoadedFileName(null);
+                        setDecryptResult(null);
+                      }}
+                      className="text-[10px] text-slate-400 hover:text-slate-200"
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+                <textarea
+                  value={ciphertextInput}
+                  onChange={(e) => {
+                    setCiphertextInput(e.target.value);
+                    setDecryptLoadedFileName(null);
+                  }}
+                  rows={7}
+                  placeholder="-----BEGIN AGE ENCRYPTED FILE-----&#10;...&#10;-----END AGE ENCRYPTED FILE-----"
+                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
             </div>
 
             {/* Parsed Meta Information Preview */}

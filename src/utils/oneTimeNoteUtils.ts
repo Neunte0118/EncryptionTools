@@ -54,7 +54,8 @@ export function base64UrlToBase64(b64url: string): string {
 export async function createOneTimeNoteLink(
   content: string,
   options: {
-    durationMinutes: number; // how long until the link expires
+    durationMinutes?: number; // how long until the link expires
+    expiresAt?: number; // explicit timestamp for expiration
     burnAfterSeconds?: number; // how long recipient has once opened (e.g., 30s)
     title?: string;
     password?: string; // optional extra password protection
@@ -67,7 +68,7 @@ export async function createOneTimeNoteLink(
   keyBase64Url?: string;
 }> {
   const now = Date.now();
-  const expiresAt = now + options.durationMinutes * 60 * 1000;
+  const expiresAt = options.expiresAt || (now + (options.durationMinutes || 60) * 60 * 1000);
   const burnAfterSeconds = options.burnAfterSeconds || 60;
 
   const innerPayload: OneTimeNotePayload = {

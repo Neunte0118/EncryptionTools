@@ -24,6 +24,7 @@ import {
   ExternalLink,
   Info,
   KeyRound,
+  Calendar,
 } from 'lucide-react';
 
 export const OneTimeNoteTool: React.FC = () => {
@@ -32,7 +33,13 @@ export const OneTimeNoteTool: React.FC = () => {
   // Creator state
   const [noteContent, setNoteContent] = useState('');
   const [noteTitle, setNoteTitle] = useState('');
+  // Expiry Mode: preset duration or specific datetime
+  const [expiryMode, setExpiryMode] = useState<'duration' | 'datetime'>('duration');
   const [durationMinutes, setDurationMinutes] = useState<number>(60); // default 1 hour
+  const [targetDateTime, setTargetDateTime] = useState<string>(() => {
+    const d = new Date(Date.now() + 60 * 60 * 1000);
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+  });
   const [burnAfterSeconds, setBurnAfterSeconds] = useState<number>(60); // default 60s once opened
   const [usePassword, setUsePassword] = useState(false);
   const [password, setPassword] = useState('');
@@ -119,8 +126,20 @@ export const OneTimeNoteTool: React.FC = () => {
 
     setIsGenerating(true);
     try {
+      let expiresAt: number;
+      if (expiryMode === 'datetime') {
+        expiresAt = new Date(targetDateTime).getTime();
+        if (isNaN(expiresAt) || expiresAt <= Date.now()) {
+          setCreateError('有効期限日時は現在より先の未来の日時を指定してください');
+          setIsGenerating(false);
+          return;
+        }
+      } else {
+        expiresAt = Date.now() + durationMinutes * 60 * 1000;
+      }
+
       const res = await createOneTimeNoteLink(noteContent.trim(), {
-        durationMinutes,
+        expiresAt,
         burnAfterSeconds,
         title: noteTitle.trim() || undefined,
         password: usePassword ? password.trim() : undefined,
@@ -318,48 +337,94 @@ export const OneTimeNoteTool: React.FC = () => {
               </div>
 
               {/* Expiration Settings */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                <div>
-                  <label className="block text-slate-400 mb-1 flex items-center gap-1.5">
+              <div className="space-y-3 pt-1 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-300 font-semibold flex items-center gap-1.5">
                     <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                    <span>リンク全体の有効期限:</span>
-                  </label>
-                  <select
-                    value={durationMinutes}
-                    onChange={(e) => setDurationMinutes(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value={10}>10 分間 (極短期間)</option>
-                    <option value={60}>1 時間 (推奨)</option>
-                    <option value={360}>6 時間</option>
-                    <option value={1440}>24 時間 (1日)</option>
-                    <option value={4320}>3 日間</option>
-                    <option value={10080}>7 日間</option>
-                  </select>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    期限を過ぎると、リンクを開いても自動的に破棄され復号できなくなります。
+                    <span>リンク全体の有効期限</span>
                   </span>
+
+                  <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setExpiryMode('duration')}
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded transition-colors ${
+                        expiryMode === 'duration'
+                          ? 'bg-slate-800 text-indigo-400'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      経過時間
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setExpiryMode('datetime')}
+                      className={`px-2.5 py-0.5 text-xs font-medium rounded transition-colors ${
+                        expiryMode === 'datetime'
+                          ? 'bg-slate-800 text-indigo-400'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      日時指定
+                    </button>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-slate-400 mb-1 flex items-center gap-1.5">
-                    <Timer className="w-3.5 h-3.5 text-amber-400" />
-                    <span>開封後の自爆タイマー:</span>
-                  </label>
-                  <select
-                    value={burnAfterSeconds}
-                    onChange={(e) => setBurnAfterSeconds(Number(e.target.value))}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value={15}>15 秒 (超高速消滅)</option>
-                    <option value={30}>30 秒</option>
-                    <option value={60}>60 秒 (1分・推奨)</option>
-                    <option value={180}>3 分間</option>
-                    <option value={300}>5 分間</option>
-                  </select>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    相手が「開封」を押してから画面から完全抹消されるまでの時間です。
-                  </span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {expiryMode === 'duration' ? (
+                    <div>
+                      <select
+                        value={durationMinutes}
+                        onChange={(e) => setDurationMinutes(Number(e.target.value))}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                      >
+                        <option value={10}>10 分間 (極短期間)</option>
+                        <option value={60}>1 時間 (推奨)</option>
+                        <option value={360}>6 時間</option>
+                        <option value={1440}>24 時間 (1日)</option>
+                        <option value={4320}>3 日間</option>
+                        <option value={10080}>7 日間 (1週間)</option>
+                        <option value={20160}>14 日間 (2週間)</option>
+                        <option value={43200}>30 日間 (約1ヶ月)</option>
+                      </select>
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        期限を過ぎると、リンクを開いても自動的に破棄され復号できなくなります。
+                      </span>
+                    </div>
+                  ) : (
+                    <div>
+                      <input
+                        type="datetime-local"
+                        value={targetDateTime}
+                        onChange={(e) => setTargetDateTime(e.target.value)}
+                        className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-500 mt-1 block">
+                        指定した日時に到達すると自動消滅し、復号できなくなります。
+                      </span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="block text-slate-400 mb-1 flex items-center gap-1.5">
+                      <Timer className="w-3.5 h-3.5 text-amber-400" />
+                      <span>開封後の自爆タイマー:</span>
+                    </label>
+                    <select
+                      value={burnAfterSeconds}
+                      onChange={(e) => setBurnAfterSeconds(Number(e.target.value))}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value={15}>15 秒 (超高速消滅)</option>
+                      <option value={30}>30 秒</option>
+                      <option value={60}>60 秒 (1分・推奨)</option>
+                      <option value={180}>3 分間</option>
+                      <option value={300}>5 分間</option>
+                    </select>
+                    <span className="text-[10px] text-slate-500 mt-1 block">
+                      相手が「開封」を押してから画面から完全抹消されるまでの時間です。
+                    </span>
+                  </div>
                 </div>
               </div>
 

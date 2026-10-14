@@ -18,6 +18,9 @@ import { BinaryConverterStudio } from './components/BinaryConverterStudio';
 import { SelfDecryptingPackageTool } from './components/SelfDecryptingPackageTool';
 import { TimelockCryptoTool } from './components/TimelockCryptoTool';
 import { OneTimeNoteTool } from './components/OneTimeNoteTool';
+import { FileShredderTool } from './components/FileShredderTool';
+import { PgpStudioTool } from './components/PgpStudioTool';
+import { EncryptedZipTool } from './components/EncryptedZipTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -45,6 +48,8 @@ import {
   FileCode,
   Hourglass,
   Flame,
+  Trash2,
+  FolderArchive,
 } from 'lucide-react';
 
 type Tab =
@@ -57,6 +62,9 @@ type Tab =
   | 'self-decrypt'
   | 'onetime-note'
   | 'timelock'
+  | 'pgp'
+  | 'encrypted-zip'
+  | 'shredder'
   | 'shamir'
   | 'steganography'
   | 'metadata'
@@ -223,6 +231,30 @@ export default function App() {
       shortTitle: 'タイムロック',
       description: '未来の指定時刻まで絶対に解錠できない時限暗号・復号 (tlock)',
       icon: Hourglass,
+      category: 'crypto',
+    },
+    {
+      id: 'pgp',
+      title: 'PGP/GPG 暗号化・鍵スタジオ',
+      shortTitle: 'PGPスタジオ',
+      description: 'RFC 4880 OpenPGP 鍵生成・ASCIIアーマー暗号化・復号・署名検証',
+      icon: Shield,
+      category: 'crypto',
+    },
+    {
+      id: 'encrypted-zip',
+      title: '暗号化 ZIP アーカイバー',
+      shortTitle: '暗号化ZIP',
+      description: 'パスワード付き暗号化ZIPの作成・解凍 (AES-256 / ZipCrypto)',
+      icon: FolderArchive,
+      category: 'crypto',
+    },
+    {
+      id: 'shredder',
+      title: 'ファイル・シュレッダー (完全抹消)',
+      shortTitle: 'シュレッダー',
+      description: 'DoD 5220.22-M / Gutmann 準拠の不可逆ノイズ上書き破壊',
+      icon: Trash2,
       category: 'crypto',
     },
     {
@@ -550,6 +582,12 @@ export default function App() {
           {activeTab === 'onetime-note' && <OneTimeNoteTool />}
 
           {activeTab === 'timelock' && <TimelockCryptoTool />}
+
+          {activeTab === 'pgp' && <PgpStudioTool />}
+
+          {activeTab === 'encrypted-zip' && <EncryptedZipTool />}
+
+          {activeTab === 'shredder' && <FileShredderTool />}
 
           {activeTab === 'generator' && (
             <KeyGeneratorTool

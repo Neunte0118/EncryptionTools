@@ -93,7 +93,7 @@ export const TarCompressionTool: React.FC = () => {
 
     try {
       const buffer = await archiveFile.arrayBuffer();
-      let tarBytes = new Uint8Array(buffer);
+      let tarBytes: any = new Uint8Array(buffer);
 
       const isGz =
         archiveFile.name.endsWith('.gz') ||

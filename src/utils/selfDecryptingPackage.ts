@@ -450,3 +450,29 @@ function escapeHtml(str: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+export interface GenerateSelfDecryptingOptions {
+  type: 'text' | 'file';
+  textContent?: string;
+  fileData?: ArrayBuffer;
+  fileName?: string;
+  password: string;
+  title?: string;
+  hint?: string;
+}
+
+export async function generateSelfDecryptingHtml(
+  options: GenerateSelfDecryptingOptions
+): Promise<string> {
+  const data = options.type === 'file' && options.fileData
+    ? options.fileData
+    : (options.textContent || '');
+
+  return createSelfDecryptingHtml(data, options.password, {
+    title: options.title,
+    hint: options.hint,
+    payloadType: options.type,
+    filename: options.fileName,
+  });
+}
+

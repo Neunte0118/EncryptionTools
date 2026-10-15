@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { generateSelfDecryptingHtml } from '../utils/selfDecryptingPackageUtils';
+import { generateSelfDecryptingHtml } from '../utils/selfDecryptingPackage';
 import {
   FileCode,
   Lock,

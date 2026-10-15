@@ -205,9 +205,9 @@ export async function extractDataFromWav(
     const key = await deriveKeyFromPassword(password.trim(), salt!);
     try {
       const decBuf = await window.crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv: iv! },
+        { name: 'AES-GCM', iv: iv as any },
         key,
-        rawPayload
+        rawPayload as any
       );
       const text = new TextDecoder('utf-8').decode(decBuf);
       return { text, isEncrypted: true };

@@ -142,7 +142,7 @@ export function extractTarArchive(tarBuffer: Uint8Array): TarEntry[] {
 export async function compressTarToGz(tarBytes: Uint8Array): Promise<Uint8Array> {
   const cs = new CompressionStream('gzip');
   const writer = cs.writable.getWriter();
-  writer.write(tarBytes);
+  writer.write(tarBytes as BufferSource);
   writer.close();
 
   const response = new Response(cs.readable);
@@ -156,7 +156,7 @@ export async function compressTarToGz(tarBytes: Uint8Array): Promise<Uint8Array>
 export async function decompressGzToTar(gzBytes: Uint8Array): Promise<Uint8Array> {
   const ds = new DecompressionStream('gzip');
   const writer = ds.writable.getWriter();
-  writer.write(gzBytes);
+  writer.write(gzBytes as BufferSource);
   writer.close();
 
   const response = new Response(ds.readable);

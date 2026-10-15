@@ -22,6 +22,7 @@ import { UnifiedCompressionTool } from './components/UnifiedCompressionTool';
 import { UnifiedSteganographyTool } from './components/UnifiedSteganographyTool';
 import { ChaCha20Tool } from './components/ChaCha20Tool';
 import { ActionPipelinesTool } from './components/ActionPipelinesTool';
+import { RingSignatureTool } from './components/RingSignatureTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -52,6 +53,7 @@ import {
   Clock,
   Search,
   Zap,
+  Users,
 } from 'lucide-react';
 
 export type Category = 'action' | 'vault' | 'crypto' | 'share' | 'file' | 'verify';
@@ -84,7 +86,8 @@ export type Tab =
   // 検証
   | 'hashes'
   | 'binary-studio'
-  | 'signatures';
+  | 'signatures'
+  | 'ring-signature';
 
 export interface ToolItem {
   id: Tab;
@@ -135,6 +138,7 @@ export default function App() {
 
   // Category collapsed state in sidebar
   const [collapsedCategories, setCollapsedCategories] = useState<Record<Category, boolean>>({
+    action: false,
     vault: false,
     crypto: false,
     share: false,
@@ -236,6 +240,15 @@ export default function App() {
   };
 
   const tools: ToolItem[] = [
+    // 0. アクション (一括実行)
+    {
+      id: 'action-pipeline',
+      title: '一括保護パイプライン',
+      description: 'ハッシュ計算・改竄防止・AES-256暗号化パッケージを一括実行',
+      icon: Zap,
+      category: 'action',
+    },
+
     // 1. 鍵管理
     {
       id: 'vault',
@@ -272,6 +285,13 @@ export default function App() {
       id: 'aes',
       title: 'AES暗号',
       description: 'AES-256-GCM 共通鍵によるテキスト・ファイルの高速暗号化と復号',
+      icon: Lock,
+      category: 'crypto',
+    },
+    {
+      id: 'chacha',
+      title: 'ChaCha20暗号',
+      description: 'RFC 8439 ChaCha20-Poly1305 高速認証付きストリーム暗号',
       icon: Lock,
       category: 'crypto',
     },
@@ -359,7 +379,7 @@ export default function App() {
     {
       id: 'steganography',
       title: 'ステガノグラフィ',
-      description: '画像ピクセル（LSB）へのデータ不可視埋め込み・抽出',
+      description: '画像ピクセル・WAV音声波形へのデータ不可視埋め込み・抽出',
       icon: Eye,
       category: 'file',
     },
@@ -384,6 +404,13 @@ export default function App() {
       title: '電子署名作成・検証',
       description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
       icon: FileSignature,
+      category: 'verify',
+    },
+    {
+      id: 'ring-signature',
+      title: 'リング署名',
+      description: 'Ed25519-SAG 準拠の完全匿名グループ署名作成と数学的検証',
+      icon: Users,
       category: 'verify',
     },
   ];
@@ -667,6 +694,9 @@ export default function App() {
         <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto w-full min-w-0">
           <OfflineIndicator />
 
+          {/* 0. アクション */}
+          {activeTab === 'action-pipeline' && <ActionPipelinesTool />}
+
           {/* 1. 鍵管理 */}
           {activeTab === 'vault' && (
             <KeyVaultManager
@@ -702,6 +732,8 @@ export default function App() {
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
             />
           )}
+
+          {activeTab === 'chacha' && <ChaCha20Tool />}
 
           {activeTab === 'rsa' && (
             <EncryptionTool
@@ -756,7 +788,7 @@ export default function App() {
 
           {activeTab === 'metadata' && <FileMetadataTool />}
 
-          {activeTab === 'steganography' && <SteganographyTool />}
+          {activeTab === 'steganography' && <UnifiedSteganographyTool />}
 
           {/* 5. 検証 */}
           {activeTab === 'hashes' && <HashTool />}
@@ -775,6 +807,8 @@ export default function App() {
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
             />
           )}
+
+          {activeTab === 'ring-signature' && <RingSignatureTool />}
         </main>
       </div>
 

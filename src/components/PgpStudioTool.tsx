@@ -29,8 +29,8 @@ export const PgpStudioTool: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'encrypt' | 'decrypt' | 'keygen'>('encrypt');
 
   // Keygen state
-  const [keyName, setKeyName] = useState('Alice');
-  const [keyEmail, setKeyEmail] = useState('alice@example.com');
+  const [keyName, setKeyName] = useState('');
+  const [keyEmail, setKeyEmail] = useState('');
   const [keyPassphrase, setKeyPassphrase] = useState('');
   const [keyType, setKeyType] = useState<'ecc' | 'rsa'>('ecc');
   const [rsaBits, setRsaBits] = useState<2048 | 4096>(2048);
@@ -522,7 +522,7 @@ export const PgpStudioTool: React.FC = () => {
                   type="text"
                   value={keyName}
                   onChange={(e) => setKeyName(e.target.value)}
-                  placeholder="例: Alice Nakamoto"
+                  placeholder="ユーザー名・識別名を入力"
                   required
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-medium focus:outline-none focus:border-indigo-500"
                 />
@@ -534,7 +534,7 @@ export const PgpStudioTool: React.FC = () => {
                   type="email"
                   value={keyEmail}
                   onChange={(e) => setKeyEmail(e.target.value)}
-                  placeholder="例: alice@example.com"
+                  placeholder="メールアドレスを入力"
                   required
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-medium focus:outline-none focus:border-indigo-500"
                 />

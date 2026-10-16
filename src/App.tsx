@@ -4,7 +4,11 @@ import { loadVaultFromLocalStorage, saveVaultToLocalStorage } from './utils/vaul
 import { KeyVaultManager } from './components/KeyVaultManager';
 import { SignatureTool } from './components/SignatureTool';
 import { HashTool } from './components/HashTool';
-import { EncryptionTool } from './components/EncryptionTool';
+import { AesTool } from './components/AesTool';
+import { RsaTool } from './components/RsaTool';
+import { EcdhTool } from './components/EcdhTool';
+import { PostQuantumCryptoTool } from './components/PostQuantumCryptoTool';
+import { VisualCryptographyTool } from './components/VisualCryptographyTool';
 import { KeyGeneratorTool } from './components/KeyGeneratorTool';
 import { RandomGeneratorTool } from './components/RandomGeneratorTool';
 import { P2PCommunicationTool } from './components/P2PCommunicationTool';
@@ -57,6 +61,7 @@ import {
   Zap,
   Users,
   Cpu,
+  Atom,
 } from 'lucide-react';
 
 export type Category = 'action' | 'vault' | 'crypto' | 'share' | 'file' | 'verify';
@@ -74,6 +79,8 @@ export type Tab =
   | 'chacha'
   | 'rsa'
   | 'ecdh'
+  | 'pqc'
+  | 'visual-crypto'
   | 'fhe'
   | 'abe'
   | 'timelock'
@@ -231,6 +238,8 @@ export default function App() {
         handleSelectTab('aes');
       } else if (key.type === 'rsa-oaep') {
         handleSelectTab('rsa');
+      } else if (key.type === 'ecdh') {
+        handleSelectTab('ecdh');
       } else {
         handleSelectTab('aes');
       }
@@ -248,8 +257,8 @@ export default function App() {
     // 0. アクション (一括実行)
     {
       id: 'action-pipeline',
-      title: '一括保護パイプライン',
-      description: 'ハッシュ計算・改竄防止・AES-256暗号化パッケージを一括実行',
+      title: '一括実行パイプライン',
+      description: 'メタデータ消去・完全性ハッシュ・AES暗号化パッケージを一括実行',
       icon: Zap,
       category: 'action',
     },
@@ -257,7 +266,7 @@ export default function App() {
     // 1. 鍵管理
     {
       id: 'vault',
-      title: '鍵保管庫',
+      title: '暗号化鍵保管庫',
       description: '単一暗号化ファイルによる鍵ペア・共通鍵の安全な保管と管理',
       icon: FolderKey,
       category: 'vault',
@@ -265,22 +274,22 @@ export default function App() {
     },
     {
       id: 'two-factor',
-      title: '二要素認証',
-      description: 'TOTP ワンタイム認証コード生成・秘密鍵インポート',
+      title: 'TOTP (二要素認証)',
+      description: 'RFC 6238 タイムスタンプ型ワンタイム認証コード生成・インポート',
       icon: KeyRound,
       category: 'vault',
     },
     {
       id: 'generator',
-      title: '鍵生成',
+      title: '暗号鍵ペア生成 (RSA / EC / AES)',
       description: 'RSA / ECDSA / ECDH / AES-GCM 鍵ペア生成とエクスポート',
       icon: PlusCircle,
       category: 'vault',
     },
     {
       id: 'random',
-      title: 'パスワード・乱数生成',
-      description: '暗号論的疑似乱数（CSPRNG）・パスワード・UUID生成',
+      title: '暗号論的擬似乱数 (CSPRNG / UUIDv7)',
+      description: '暗号論的疑似乱数（CSPRNG）・パスワード・UUIDv7生成',
       icon: Dices,
       category: 'vault',
     },
@@ -288,56 +297,70 @@ export default function App() {
     // 2. 暗号化・復号
     {
       id: 'aes',
-      title: 'AES暗号',
-      description: 'AES-256-GCM 共通鍵によるテキスト・ファイルの高速暗号化と復号',
+      title: 'AES-256 (GCM / CBC)',
+      description: 'NIST FIPS 197 256-bit共通鍵認証付き暗号化（テキスト・ファイル）',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'chacha',
-      title: 'ChaCha20暗号',
-      description: 'RFC 8439 ChaCha20-Poly1305 高速認証付きストリーム暗号',
+      title: 'ChaCha20-Poly1305',
+      description: 'RFC 8439 高速認証付きストリーム暗号（テキスト・ファイル）',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'rsa',
-      title: 'RSA暗号',
-      description: 'RSA-OAEP 公開鍵暗号・秘密鍵復号（テキスト・ハイブリッド）',
+      title: 'RSA-OAEP',
+      description: 'PKCS#1 v2.2 OAEP 公開鍵暗号化およびハイブリッドファイル暗号化',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'ecdh',
-      title: '楕円曲線暗号',
-      description: 'ECDH（P-256 / P-384 / P-521）による共有秘密の導出',
+      title: 'ECDH (楕円曲線ディフィー・ヘルマン)',
+      description: 'P-256 / P-384 / P-521 楕円曲線ディフィー・ヘルマン共通鍵導出',
       icon: Lock,
       category: 'crypto',
     },
     {
+      id: 'pqc',
+      title: '耐量子暗号 (ML-KEM / ML-DSA)',
+      description: 'NIST標準格子暗号 FIPS 203 ML-KEM (Kyber) & FIPS 204 ML-DSA (Dilithium)',
+      icon: Atom,
+      category: 'crypto',
+    },
+    {
+      id: 'visual-crypto',
+      title: '視覚復号型暗号 (Visual Cryptography)',
+      description: 'Naor-Shamir (2,2) 視覚秘密分散法。計算不要・透明シート重ね合わせ肉眼復号',
+      icon: Eye,
+      category: 'crypto',
+    },
+    {
       id: 'fhe',
-      title: '完全準同型暗号',
-      description: 'DGHV / Paillier 準拠の暗号化状態での論理回路・全加算器・統計合算計算',
+      title: '完全準同型暗号 (FHE / DGHV & Paillier)',
+      description: '暗号化状態での論理回路・全加算器・統計合算計算',
       icon: Cpu,
       category: 'crypto',
     },
     {
       id: 'abe',
-      title: '属性ベース暗号',
-      description: 'CP-ABE 準拠の役職・属性論理式ポリシーによる暗号学的アクセス制御',
+      title: '属性ベース暗号 (CP-ABE)',
+      description: 'Ciphertext-Policy ABE による役職・属性論理式ポリシーアクセス制御',
       icon: Tag,
       category: 'crypto',
     },
     {
       id: 'timelock',
-      title: 'タイムロック暗号',
-      description: 'drand Quicknet 分散ビーコンによる未来指定時刻までの時限封印',
+      title: 'タイムロック暗号 (Timelock / drand)',
+      description: 'drand Quicknet 分散ビーコンによる未来指定時刻までの時限暗号封印',
       icon: Hourglass,
       category: 'crypto',
     },
     {
       id: 'pgp',
-      title: 'PGP',
+      title: 'OpenPGP (RFC 4880)',
       description: 'RFC 4880 OpenPGP 鍵生成・ASCIIアーマー暗号化・復号・署名',
       icon: Shield,
       category: 'crypto',
@@ -346,28 +369,28 @@ export default function App() {
     // 3. 共有
     {
       id: 'onetime-note',
-      title: 'ワンタイム・ノート',
+      title: 'ワンタイム暗号共有 (Zero-Knowledge Note)',
       description: 'URLフラグメント完全秘匿・有効期限切れ自動破棄・自爆タイマー',
       icon: Flame,
       category: 'share',
     },
     {
       id: 'self-decrypt',
-      title: '自己復号ファイル',
-      description: 'ブラウザで開くだけで動く単一自己完結HTMLパッケージの生成',
+      title: '自己復号パッケージ (Self-Decrypting HTML)',
+      description: 'Web Crypto API内蔵・ブラウザ単体で復号可能な単一自己完結HTML',
       icon: FileCode,
       category: 'share',
     },
     {
       id: 'shamir',
-      title: 'シャミアの秘密分散法',
+      title: 'シャミア秘密分散法 (Shamir SSS)',
       description: '秘密情報を (k, n) 閾値シェアに分割・復元',
       icon: Split,
       category: 'share',
     },
     {
       id: 'p2p',
-      title: 'P2P通信',
+      title: 'WebRTC E2EE (P2P通信)',
       description: 'WebRTC 完全サーバーレス直接通信（チャット・ファイル・鍵交換）',
       icon: Radio,
       category: 'share',
@@ -376,28 +399,28 @@ export default function App() {
     // 4. ファイル編集
     {
       id: 'compression',
-      title: 'ファイル圧縮・展開',
+      title: 'アーカイブ圧縮・展開 (ZIP / Tar / Gzip)',
       description: 'AES-256 暗号化ZIP作成・解凍および高速Gzipストリーミング',
       icon: FileArchive,
       category: 'file',
     },
     {
       id: 'shredder',
-      title: 'シュレッダー',
+      title: 'データ完全消去 (DoD 5220.22-M / Gutmann)',
       description: 'DoD 5220.22-M / Gutmann 準拠の不可逆ノイズ上書き破壊',
       icon: Trash2,
       category: 'file',
     },
     {
       id: 'metadata',
-      title: 'メタ情報編集',
+      title: 'メタデータ消去・編集 (Exif / ID3 / PDF)',
       description: '画像Exif・音声・動画・PDFメタデータの閲覧・編集・完全消去',
       icon: Tag,
       category: 'file',
     },
     {
       id: 'steganography',
-      title: 'ステガノグラフィ',
+      title: 'ステガノグラフィ (LSB画像・WAV音声)',
       description: '画像ピクセル・WAV音声波形へのデータ不可視埋め込み・抽出',
       icon: Eye,
       category: 'file',
@@ -406,28 +429,28 @@ export default function App() {
     // 5. 検証
     {
       id: 'hashes',
-      title: 'ハッシュ値生成・検証',
+      title: '暗号学的ハッシュ (SHA-2 / SHA-3 / MD5)',
       description: 'SHA-256 / SHA-512 / SHA-384 / SHA-1 / MD5 ハッシュ計算と改竄照合',
       icon: Hash,
       category: 'verify',
     },
     {
       id: 'binary-studio',
-      title: 'バイナリ変換',
+      title: 'バイナリ・基数変換 (Hex / Base64 / Base58)',
       description: 'Hex / Base64 / Base58 / 2進 / 10進数相互変換とHexダンプ解析',
       icon: Binary,
       category: 'verify',
     },
     {
       id: 'signatures',
-      title: '電子署名作成・検証',
+      title: '電子署名 (ECDSA / Ed25519 / RSA-PSS)',
       description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
       icon: FileSignature,
       category: 'verify',
     },
     {
       id: 'ring-signature',
-      title: 'リング署名',
+      title: 'リング署名 (Ed25519-SAG)',
       description: 'Ed25519-SAG 準拠の完全匿名グループ署名作成と数学的検証',
       icon: Users,
       category: 'verify',
@@ -739,9 +762,8 @@ export default function App() {
 
           {/* 2. 暗号化・復号 (アルゴリズム個別表示) */}
           {activeTab === 'aes' && (
-            <EncryptionTool
+            <AesTool
               vault={vault}
-              initialSubTab="aes"
               selectedKey={
                 selectedKeyForAction?.action === 'encrypt' ||
                 selectedKeyForAction?.action === 'decrypt'
@@ -755,9 +777,8 @@ export default function App() {
           {activeTab === 'chacha' && <ChaCha20Tool />}
 
           {activeTab === 'rsa' && (
-            <EncryptionTool
+            <RsaTool
               vault={vault}
-              initialSubTab="rsa"
               selectedKey={
                 selectedKeyForAction?.action === 'encrypt' ||
                 selectedKeyForAction?.action === 'decrypt'
@@ -769,9 +790,8 @@ export default function App() {
           )}
 
           {activeTab === 'ecdh' && (
-            <EncryptionTool
+            <EcdhTool
               vault={vault}
-              initialSubTab="ecdh"
               selectedKey={
                 selectedKeyForAction?.action === 'encrypt' ||
                 selectedKeyForAction?.action === 'decrypt'
@@ -781,6 +801,10 @@ export default function App() {
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
             />
           )}
+
+          {activeTab === 'pqc' && <PostQuantumCryptoTool />}
+
+          {activeTab === 'visual-crypto' && <VisualCryptographyTool />}
 
           {activeTab === 'fhe' && <FheTool />}
 

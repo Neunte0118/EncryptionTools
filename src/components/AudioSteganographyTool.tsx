@@ -221,7 +221,7 @@ export const AudioSteganographyTool: React.FC = () => {
                     <span>秘密の不可視埋め込みが完了しました</span>
                   </div>
                   <div className="text-[11px] text-slate-400">
-                    人間の耳には元の音声と完全に区別がつかない極小のサンプルビット変調です。
+                    人間の耳には元の音声と完全に区別がつかない極小の波形ビット変調です。
                   </div>
                 </div>
 

@@ -141,26 +141,12 @@ export function getPublicKeyFromSecret(secretKeyHex: string): string {
  * Generate dummy decoy members for the ring
  */
 export function generateDummyRingMembers(count: number): RingMember[] {
-  const roles = [
-    '人事部長',
-    '最高技術責任者 (CTO)',
-    'セキュリティ統轄',
-    '法務コンプライアンス員',
-    '監査役員',
-    'リードエンジニア',
-    'システム管理者',
-    '財務担当ディレクター',
-    '内部監査室長',
-    'プロジェクト責任者',
-  ];
-
   const members: RingMember[] = [];
   for (let i = 0; i < count; i++) {
     const pair = generateRingKeyPair();
-    const roleName = roles[i % roles.length];
     members.push({
       publicKeyHex: pair.publicKeyHex,
-      label: `${roleName} (${pair.publicKeyHex.slice(0, 8)}...)`,
+      label: `おとり鍵 #${i + 1} (${pair.publicKeyHex.slice(0, 8)}...)`,
       isSelf: false,
     });
   }

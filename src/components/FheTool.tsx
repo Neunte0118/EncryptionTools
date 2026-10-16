@@ -44,8 +44,8 @@ export const FheTool: React.FC = () => {
   // Mode 1: Boolean FHE Gates (DGHV)
   // -------------------------------------------------------------
   const [dghvKey] = useState<DghvKey>(() => generateDghvKey(64));
-  const [bitA, setBitA] = useState<number>(1);
-  const [bitB, setBitB] = useState<number>(1);
+  const [bitA, setBitA] = useState<number>(0);
+  const [bitB, setBitB] = useState<number>(0);
 
   const [cipherA, setCipherA] = useState<FheCipherBit | null>(null);
   const [cipherB, setCipherB] = useState<FheCipherBit | null>(null);
@@ -110,8 +110,8 @@ export const FheTool: React.FC = () => {
   // -------------------------------------------------------------
   // Mode 2: 4-Bit Encrypted Adder Circuit
   // -------------------------------------------------------------
-  const [numA, setNumA] = useState<number>(5);
-  const [numB, setNumB] = useState<number>(7);
+  const [numA, setNumA] = useState<number>(0);
+  const [numB, setNumB] = useState<number>(0);
   const [isAdding, setIsAdding] = useState(false);
   const [adderResult, setAdderResult] = useState<{
     encBitsA: FheCipherBit[];
@@ -167,26 +167,10 @@ export const FheTool: React.FC = () => {
   const [paillierKeys] = useState<{ publicKey: PaillierPublicKey; privateKey: PaillierPrivateKey }>(() =>
     generatePaillierKeys()
   );
-  const [entries, setEntries] = useState<{ label: string; plaintext: number; ciphertext: bigint }[]>([
-    {
-      label: 'エンジニア A の希望給与',
-      plaintext: 520,
-      ciphertext: paillierEncrypt(520, paillierKeys.publicKey),
-    },
-    {
-      label: 'エンジニア B の希望給与',
-      plaintext: 680,
-      ciphertext: paillierEncrypt(680, paillierKeys.publicKey),
-    },
-    {
-      label: 'エンジニア C の希望給与',
-      plaintext: 600,
-      ciphertext: paillierEncrypt(600, paillierKeys.publicKey),
-    },
-  ]);
+  const [entries, setEntries] = useState<{ label: string; plaintext: number; ciphertext: bigint }[]>([]);
 
   const [newLabel, setNewLabel] = useState('');
-  const [newVal, setNewVal] = useState<number>(500);
+  const [newVal, setNewVal] = useState<number | ''>('');
 
   const [aggCipherSum, setAggCipherSum] = useState<bigint | null>(null);
   const [decryptedAggResult, setDecryptedAggResult] = useState<{
@@ -196,17 +180,19 @@ export const FheTool: React.FC = () => {
   } | null>(null);
 
   const handleAddPaillierEntry = () => {
-    if (!newVal || isNaN(newVal)) return;
-    const cipher = paillierEncrypt(newVal, paillierKeys.publicKey);
+    if (newVal === '' || isNaN(Number(newVal))) return;
+    const num = Number(newVal);
+    const cipher = paillierEncrypt(num, paillierKeys.publicKey);
     setEntries((prev) => [
       ...prev,
       {
         label: newLabel.trim() || `データ #${prev.length + 1}`,
-        plaintext: newVal,
+        plaintext: num,
         ciphertext: cipher,
       },
     ]);
     setNewLabel('');
+    setNewVal('');
     setAggCipherSum(null);
     setDecryptedAggResult(null);
   };
@@ -578,26 +564,35 @@ export const FheTool: React.FC = () => {
               <span className="text-[10px] text-slate-400 font-mono">{entries.length} 件</span>
             </h3>
 
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {entries.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="font-semibold text-slate-200 truncate">{item.label}</div>
-                    <div className="font-mono text-[10px] text-cyan-400 truncate mt-0.5">
-                      暗号文: {item.ciphertext.toString().slice(0, 32)}...
+            {entries.length === 0 ? (
+              <div className="p-8 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-center space-y-1">
+                <div className="text-slate-400 font-medium">暗号化データが登録されていません</div>
+                <p className="text-[11px] text-slate-500">
+                  下のフォームからラベルと数値を入力して「暗号化追加」をクリックしてください。
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                {entries.map((item, idx) => (
+                  <div
+                    key={idx}
+                    className="p-3 bg-slate-950 border border-slate-800 rounded-lg flex items-center justify-between gap-3"
+                  >
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-200 truncate">{item.label}</div>
+                      <div className="font-mono text-[10px] text-cyan-400 truncate mt-0.5">
+                        暗号文: {item.ciphertext.toString().slice(0, 32)}...
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
+                        平文: {item.plaintext}
+                      </span>
                     </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono">
-                      平文: {item.plaintext}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
 
             {/* Add new entry form */}
             <div className="pt-2 border-t border-slate-800 flex gap-2">
@@ -605,13 +600,13 @@ export const FheTool: React.FC = () => {
                 type="text"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
-                placeholder="ラベル (例: エンジニア D)"
+                placeholder="ラベル (例: 項目名)"
                 className="flex-1 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-cyan-500"
               />
               <input
                 type="number"
                 value={newVal}
-                onChange={(e) => setNewVal(Number(e.target.value))}
+                onChange={(e) => setNewVal(e.target.value === '' ? '' : Number(e.target.value))}
                 placeholder="数値"
                 className="w-24 px-3 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
               />

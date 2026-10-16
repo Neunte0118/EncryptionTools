@@ -33,25 +33,16 @@ export const AbeTool: React.FC = () => {
   // Authority & Master Key
   const [authority] = useState<MasterAuthority>(() => generateMasterAuthority());
 
-  // Available Presets for Personas
-  const [userKeys, setUserKeys] = useState<UserSecretKey[]>(() => [
-    issueUserKey(authority, 'Dr. Alice (外科部長)', ['role:doctor', 'dept:surgery', 'level:lead']),
-    issueUserKey(authority, 'Dr. Bob (腫瘍内科医)', ['role:doctor', 'dept:oncology']),
-    issueUserKey(authority, 'Nurse Carol (看護師)', ['role:nurse', 'dept:surgery']),
-    issueUserKey(authority, 'Director Dave (病院長)', ['role:director']),
-  ]);
+  // User Keys (empty by default)
+  const [userKeys, setUserKeys] = useState<UserSecretKey[]>([]);
 
   // Persona Creation State
   const [newUserId, setNewUserId] = useState('');
   const [newUserAttributes, setNewUserAttributes] = useState('');
 
   // Encryption State
-  const [policyExpr, setPolicyExpr] = useState(
-    '(role:doctor AND dept:surgery) OR role:director'
-  );
-  const [secretMessage, setSecretMessage] = useState(
-    '極秘手術計画書: 患者ID #98421 に関する機密カルテ情報および執刀プロトコルです。'
-  );
+  const [policyExpr, setPolicyExpr] = useState('');
+  const [secretMessage, setSecretMessage] = useState('');
   const [isEncrypting, setIsEncrypting] = useState(false);
   const [cipherPackage, setCipherPackage] = useState<AbeCipherPackage | null>(null);
   const [encryptError, setEncryptError] = useState('');
@@ -197,25 +188,6 @@ export const AbeTool: React.FC = () => {
                 className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-amber-300 font-mono text-xs focus:outline-none focus:border-amber-500"
               />
 
-              {/* Policy Presets */}
-              <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                <span className="text-[10px] text-slate-500">プリセット例:</span>
-                {[
-                  '(role:doctor AND dept:surgery) OR role:director',
-                  'role:doctor AND dept:oncology',
-                  'dept:surgery OR role:director',
-                  '(role:doctor OR role:nurse) AND dept:surgery',
-                ].map((preset, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => setPolicyExpr(preset)}
-                    className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-[10px] text-slate-400 hover:text-slate-200 hover:border-slate-700 transition-colors"
-                  >
-                    {preset}
-                  </button>
-                ))}
-              </div>
             </div>
 
             {/* Secret Message */}
@@ -225,6 +197,7 @@ export const AbeTool: React.FC = () => {
                 value={secretMessage}
                 onChange={(e) => setSecretMessage(e.target.value)}
                 rows={4}
+                placeholder="暗号化する機密テキストを入力..."
                 className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-sans focus:outline-none focus:border-amber-500 leading-relaxed"
               />
             </div>
@@ -238,7 +211,7 @@ export const AbeTool: React.FC = () => {
             <button
               type="button"
               onClick={handleEncrypt}
-              disabled={isEncrypting}
+              disabled={isEncrypting || !policyExpr.trim() || !secretMessage.trim()}
               className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-sm text-xs"
             >
               <Lock className="w-4 h-4" />
@@ -270,65 +243,81 @@ export const AbeTool: React.FC = () => {
 
             <div className="space-y-1.5">
               <label className="block text-slate-300 font-semibold">復号を試みるユーザーを選択</label>
-              <div className="space-y-1.5">
-                {userKeys.map((u, idx) => {
-                  const isSelected = selectedUserIndex === idx;
-                  let willSatisfy = false;
-                  if (cipherPackage) {
-                    willSatisfy = evaluatePolicyTree(cipherPackage.policyTree, u.attributes);
-                  }
+              {userKeys.length === 0 ? (
+                <div className="p-6 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-center space-y-2">
+                  <div className="text-slate-400 font-medium">登録されたユーザー鍵がありません</div>
+                  <p className="text-[11px] text-slate-500">
+                    上のタブ「ユーザー属性鍵の管理」から鍵を発行してください。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('keys')}
+                    className="px-3 py-1.5 rounded-lg bg-amber-600/30 text-amber-300 hover:bg-amber-600/40 text-[11px] font-medium"
+                  >
+                    属性鍵を発行する
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {userKeys.map((u, idx) => {
+                    const isSelected = selectedUserIndex === idx;
+                    let willSatisfy = false;
+                    if (cipherPackage) {
+                      willSatisfy = evaluatePolicyTree(cipherPackage.policyTree, u.attributes);
+                    }
 
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        setSelectedUserIndex(idx);
-                        setDecryptedText(null);
-                        setDecryptError(null);
-                      }}
-                      className={`p-2.5 rounded-lg border cursor-pointer transition-colors flex items-center justify-between gap-2 ${
-                        isSelected
-                          ? 'bg-amber-950/30 border-amber-500 text-amber-200'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="min-w-0">
-                        <div className="font-bold text-xs text-slate-200 truncate">{u.userId}</div>
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {u.attributes.map((attr, aIdx) => (
-                            <span
-                              key={aIdx}
-                              className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono"
-                            >
-                              {attr}
-                            </span>
-                          ))}
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => {
+                          setSelectedUserIndex(idx);
+                          setDecryptedText(null);
+                          setDecryptError(null);
+                        }}
+                        className={`p-2.5 rounded-lg border cursor-pointer transition-colors flex items-center justify-between gap-2 ${
+                          isSelected
+                            ? 'bg-amber-950/30 border-amber-500 text-amber-200'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="font-bold text-xs text-slate-200 truncate">{u.userId}</div>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {u.attributes.map((attr, aIdx) => (
+                              <span
+                                key={aIdx}
+                                className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-mono"
+                              >
+                                {attr}
+                              </span>
+                            ))}
+                          </div>
                         </div>
+
+                        {cipherPackage && (
+                          <div className="shrink-0 text-right">
+                            {willSatisfy ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
+                                条件一致 (可)
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800">
+                                条件不一致 (不可)
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-
-                      {cipherPackage && (
-                        <div className="shrink-0 text-right">
-                          {willSatisfy ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800">
-                              条件一致 (可)
-                            </span>
-                          ) : (
-                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-950 text-rose-400 border border-rose-800">
-                              条件不一致 (不可)
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <button
               type="button"
               onClick={handleAttemptDecrypt}
-              disabled={!cipherPackage}
+              disabled={!cipherPackage || userKeys.length === 0}
               className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-sm text-xs"
             >
               <Unlock className="w-4 h-4" />
@@ -379,39 +368,48 @@ export const AbeTool: React.FC = () => {
           </div>
 
           {/* User keys list */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {userKeys.map((u, idx) => (
-              <div
-                key={idx}
-                className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2"
-              >
-                <div className="flex justify-between items-start">
-                  <div className="font-bold text-slate-200 text-xs">{u.userId}</div>
-                  <span className="text-[10px] text-slate-500 font-mono">
-                    Token #{idx + 1}
-                  </span>
-                </div>
+          {userKeys.length === 0 ? (
+            <div className="p-8 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-center space-y-1">
+              <div className="text-slate-400 font-medium">発行されたユーザー属性鍵がありません</div>
+              <p className="text-[11px] text-slate-500">
+                下のフォームからユーザー名とカンマ区切りの属性を入力して鍵を発行してください。
+              </p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {userKeys.map((u, idx) => (
+                <div
+                  key={idx}
+                  className="p-3 bg-slate-950 border border-slate-800 rounded-xl space-y-2"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="font-bold text-slate-200 text-xs">{u.userId}</div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Token #{idx + 1}
+                    </span>
+                  </div>
 
-                <div className="space-y-1">
-                  <div className="text-[10px] text-slate-400">付与された属性セット:</div>
-                  <div className="flex flex-wrap gap-1">
-                    {u.attributes.map((a, aIdx) => (
-                      <span
-                        key={aIdx}
-                        className="text-[10px] px-2 py-0.5 rounded bg-amber-950/40 border border-amber-800/40 text-amber-300 font-mono"
-                      >
-                        {a}
-                      </span>
-                    ))}
+                  <div className="space-y-1">
+                    <div className="text-[10px] text-slate-400">付与された属性セット:</div>
+                    <div className="flex flex-wrap gap-1">
+                      {u.attributes.map((a, aIdx) => (
+                        <span
+                          key={aIdx}
+                          className="text-[10px] px-2 py-0.5 rounded bg-amber-950/40 border border-amber-800/40 text-amber-300 font-mono"
+                        >
+                          {a}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="pt-1 text-[10px] font-mono text-slate-500 truncate">
+                    ブラインディング値: {u.userBlindingHex.slice(0, 16)}...
                   </div>
                 </div>
-
-                <div className="pt-1 text-[10px] font-mono text-slate-500 truncate">
-                  ブラインディング値: {u.userBlindingHex.slice(0, 16)}...
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* Add custom persona form */}
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">

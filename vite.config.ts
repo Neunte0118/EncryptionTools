@@ -64,6 +64,8 @@ export default defineConfig(() => {
     resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
+        '@noble/post-quantum/ml-kem.js': path.resolve(__dirname, 'node_modules/@noble/post-quantum/ml-kem.js'),
+        '@noble/post-quantum/ml-dsa.js': path.resolve(__dirname, 'node_modules/@noble/post-quantum/ml-dsa.js'),
       },
     },
     server: {

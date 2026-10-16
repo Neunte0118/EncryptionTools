@@ -36,11 +36,9 @@ export const RingSignatureTool: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'sign' | 'verify'>('sign');
 
   // Signer State
-  const [myKeyPair, setMyKeyPair] = useState<RingKeyPair>(() => generateRingKeyPair('私の匿名鍵'));
+  const [myKeyPair, setMyKeyPair] = useState<RingKeyPair>(() => generateRingKeyPair('あなたの鍵'));
   const [showSecretKey, setShowSecretKey] = useState(false);
-  const [signMessage, setSignMessage] = useState(
-    '私は監査対象組織の役員の一人です。2026年第3四半期の不正会計および内部隠蔽の事実を告発・証明します。'
-  );
+  const [signMessage, setSignMessage] = useState('');
   const [ringMembers, setRingMembers] = useState<RingMember[]>([]);
   const [newMemberPub, setNewMemberPub] = useState('');
   const [newMemberLabel, setNewMemberLabel] = useState('');
@@ -57,21 +55,18 @@ export const RingSignatureTool: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
 
-  // Initialize ring members with self + 3 decoys
+  // Initialize ring with user's own key
   useEffect(() => {
     initDefaultRing(myKeyPair);
   }, []);
 
   const initDefaultRing = (key: RingKeyPair) => {
-    const decoys = generateDummyRingMembers(3);
     const selfMember: RingMember = {
       publicKeyHex: key.publicKeyHex,
-      label: 'あなた (実際の署名者)',
+      label: 'あなた (署名者)',
       isSelf: true,
     };
-    // Shuffle members so self is not always first
-    const list = [selfMember, ...decoys];
-    setRingMembers(shuffleArray(list));
+    setRingMembers([selfMember]);
   };
 
   const shuffleArray = <T,>(arr: T[]): T[] => {

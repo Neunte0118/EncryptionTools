@@ -24,7 +24,7 @@ export const RandomGeneratorTool: React.FC = () => {
   const [activeMode, setActiveMode] = useState<'regex' | 'uuid' | 'bytes'>('regex');
 
   // Regex Mode State
-  const [patternInput, setPatternInput] = useState('[A-Za-z0-9]{32}');
+  const [patternInput, setPatternInput] = useState('');
   const [regexCount, setRegexCount] = useState<number>(5);
   const [regexResults, setRegexResults] = useState<string[]>([]);
   const [regexError, setRegexError] = useState('');

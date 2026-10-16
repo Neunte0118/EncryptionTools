@@ -23,6 +23,8 @@ import { UnifiedSteganographyTool } from './components/UnifiedSteganographyTool'
 import { ChaCha20Tool } from './components/ChaCha20Tool';
 import { ActionPipelinesTool } from './components/ActionPipelinesTool';
 import { RingSignatureTool } from './components/RingSignatureTool';
+import { FheTool } from './components/FheTool';
+import { AbeTool } from './components/AbeTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import {
@@ -54,6 +56,7 @@ import {
   Search,
   Zap,
   Users,
+  Cpu,
 } from 'lucide-react';
 
 export type Category = 'action' | 'vault' | 'crypto' | 'share' | 'file' | 'verify';
@@ -71,6 +74,8 @@ export type Tab =
   | 'chacha'
   | 'rsa'
   | 'ecdh'
+  | 'fhe'
+  | 'abe'
   | 'timelock'
   | 'pgp'
   // 共有
@@ -307,6 +312,20 @@ export default function App() {
       title: '楕円曲線暗号',
       description: 'ECDH（P-256 / P-384 / P-521）による共有秘密の導出',
       icon: Lock,
+      category: 'crypto',
+    },
+    {
+      id: 'fhe',
+      title: '完全準同型暗号',
+      description: 'DGHV / Paillier 準拠の暗号化状態での論理回路・全加算器・統計合算計算',
+      icon: Cpu,
+      category: 'crypto',
+    },
+    {
+      id: 'abe',
+      title: '属性ベース暗号',
+      description: 'CP-ABE 準拠の役職・属性論理式ポリシーによる暗号学的アクセス制御',
+      icon: Tag,
       category: 'crypto',
     },
     {
@@ -762,6 +781,10 @@ export default function App() {
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
             />
           )}
+
+          {activeTab === 'fhe' && <FheTool />}
+
+          {activeTab === 'abe' && <AbeTool />}
 
           {activeTab === 'timelock' && <TimelockCryptoTool />}
 

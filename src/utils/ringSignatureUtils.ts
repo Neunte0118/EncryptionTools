@@ -11,11 +11,11 @@
  * - Signer anonymity is unconditionally uniform: P(signer = i) = 1/N.
  */
 
-import { ed25519 } from '@noble/curves/ed25519';
-import { sha512 } from '@noble/hashes/sha512';
+import { ed25519 } from '@noble/curves/ed25519.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
-const G = ed25519.ExtendedPoint.BASE;
-const CURVE_ORDER = ed25519.CURVE.n; // l = 2^252 + ...
+const G = ed25519.Point.BASE;
+const CURVE_ORDER = ed25519.Point.Fn.ORDER;
 
 export interface RingKeyPair {
   secretKeyHex: string;

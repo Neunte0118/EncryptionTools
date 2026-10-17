@@ -1,11 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   generateTOTP,
   generateHOTP,
   verifyTOTP,
   parseOtpAuthUri,
   TotpAlgorithm,
-  OtpAuthData,
 } from '../utils/totpUtils';
 import {
   ShieldCheck,
@@ -13,19 +12,20 @@ import {
   RefreshCw,
   Copy,
   Check,
-  Clock,
   Plus,
   Trash2,
   FileDown,
   FileUp,
   AlertCircle,
-  ExternalLink,
   Lock,
   Eye,
   EyeOff,
+  Edit2,
+  X,
+  Save,
 } from 'lucide-react';
 
-interface Stored2FAAccount {
+export interface Stored2FAAccount {
   id: string;
   label: string;
   issuer?: string;
@@ -34,21 +34,19 @@ interface Stored2FAAccount {
   algorithm: TotpAlgorithm;
   digits: number;
   period: number;
-  counter: number; // For HOTP
+  counter: number;
   createdAt: string;
 }
 
 const STORAGE_KEY = 'encryption_tools_local_2fa_accounts';
 
 export const TwoFactorAuthTool: React.FC = () => {
-  // Saved accounts in local storage (Empty by default, user-owned)
   const [accounts, setAccounts] = useState<Stored2FAAccount[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) {
-          // Filter out legacy demo account if user still has it in local storage
           return parsed.filter((a) => a.id !== 'demo-1' && a.label !== 'developer@example.com');
         }
       }
@@ -58,11 +56,10 @@ export const TwoFactorAuthTool: React.FC = () => {
     return [];
   });
 
-  // Current clock time state updated every second
   const [now, setNow] = useState<number>(Date.now());
   const [activeTab, setActiveTab] = useState<'authenticator' | 'generator' | 'verify' | 'import-export'>('authenticator');
 
-  // Codes map { [id]: { code, remainingSeconds, period } }
+  // Codes map
   const [codes, setCodes] = useState<
     Record<string, { code: string; remainingSeconds: number; period: number }>
   >({});
@@ -76,6 +73,18 @@ export const TwoFactorAuthTool: React.FC = () => {
   const [newAlgo, setNewAlgo] = useState<TotpAlgorithm>('SHA-1');
   const [newDigits, setNewDigits] = useState<number>(6);
   const [newPeriod, setNewPeriod] = useState<number>(30);
+
+  // Edit account state
+  const [editingAccount, setEditingAccount] = useState<Stored2FAAccount | null>(null);
+  const [editLabel, setEditLabel] = useState('');
+  const [editIssuer, setEditIssuer] = useState('');
+  const [editSecret, setEditSecret] = useState('');
+  const [showEditSecret, setShowEditSecret] = useState(false);
+  const [editType, setEditType] = useState<'totp' | 'hotp'>('totp');
+  const [editAlgo, setEditAlgo] = useState<TotpAlgorithm>('SHA-1');
+  const [editDigits, setEditDigits] = useState<number>(6);
+  const [editPeriod, setEditPeriod] = useState<number>(30);
+  const [editCounter, setEditCounter] = useState<number>(0);
 
   // Verifier tool state
   const [verifySecret, setVerifySecret] = useState('');
@@ -136,7 +145,6 @@ export const TwoFactorAuthTool: React.FC = () => {
             nextCodes[acc.id] = { code: 'ERR', remainingSeconds: 0, period: 30 };
           }
         } else {
-          // HOTP: based on current counter
           try {
             const code = await generateHOTP(acc.secret, acc.counter, {
               digits: acc.digits,
@@ -182,15 +190,54 @@ export const TwoFactorAuthTool: React.FC = () => {
       createdAt: new Date().toISOString(),
     };
     setAccounts((prev) => [newAccount, ...prev]);
-    // Reset form fields
     setNewSecret('');
     setNewLabel('');
     setNewIssuer('');
     setActiveTab('authenticator');
   };
 
+  const handleStartEdit = (account: Stored2FAAccount) => {
+    setEditingAccount(account);
+    setEditLabel(account.label);
+    setEditIssuer(account.issuer || '');
+    setEditSecret(account.secret);
+    setShowEditSecret(false);
+    setEditType(account.type);
+    setEditAlgo(account.algorithm);
+    setEditDigits(account.digits);
+    setEditPeriod(account.period || 30);
+    setEditCounter(account.counter || 0);
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingAccount || !editSecret.trim()) return;
+
+    setAccounts((prev) =>
+      prev.map((a) => {
+        if (a.id === editingAccount.id) {
+          return {
+            ...a,
+            label: editLabel.trim() || 'アカウント',
+            issuer: editIssuer.trim() || undefined,
+            secret: editSecret.trim().toUpperCase(),
+            type: editType,
+            algorithm: editAlgo,
+            digits: editDigits,
+            period: editPeriod,
+            counter: editCounter,
+          };
+        }
+        return a;
+      })
+    );
+    setEditingAccount(null);
+  };
+
   const handleDeleteAccount = (id: string) => {
     setAccounts((prev) => prev.filter((a) => a.id !== id));
+    if (editingAccount?.id === id) {
+      setEditingAccount(null);
+    }
   };
 
   const handleIncrementHotpCounter = async (id: string) => {
@@ -243,7 +290,7 @@ export const TwoFactorAuthTool: React.FC = () => {
           message:
             deltaVal === 0
               ? '認証成功: コードは現在ステップと完全に一致しています。'
-              : `認証成功: 時間ドリフト (${deltaVal > 0 ? `+${deltaVal}` : deltaVal} ステップ) を許容して認証されました。`,
+              : `認証成功: 時間ドリフト ${deltaVal > 0 ? `+${deltaVal}` : deltaVal} ステップを許容して認証されました。`,
         });
       } else {
         setVerifyResult({
@@ -280,7 +327,6 @@ export const TwoFactorAuthTool: React.FC = () => {
       try {
         const json = JSON.parse(event.target?.result as string);
         if (Array.isArray(json)) {
-          // Merge unique by secret
           setAccounts((prev) => {
             const existingSecrets = new Set(prev.map((p) => p.secret));
             const fresh = json.filter((j: any) => j.secret && !existingSecrets.has(j.secret));
@@ -289,10 +335,11 @@ export const TwoFactorAuthTool: React.FC = () => {
           setActiveTab('authenticator');
         }
       } catch (err) {
-        alert('JSONファイルの読み込みに失敗しました。正しいフォーマットか確認してください。');
+        alert('JSONファイルの読み込みに失敗しました');
       }
     };
     reader.readAsText(file);
+    e.target.value = '';
   };
 
   return (
@@ -306,11 +353,11 @@ export const TwoFactorAuthTool: React.FC = () => {
                 <KeyRound className="w-5 h-5" />
               </span>
               <h2 className="text-lg font-bold text-slate-100 tracking-tight">
-                ローカル 2要素認証 (2FA / TOTP / HOTP)
+                ローカル 2要素認証管理
               </h2>
             </div>
             <p className="text-xs text-slate-400">
-              WebCrypto HMAC による完全クライアントサイド動作。Google Authenticator 等互換のワンタイムパスワード生成・検証・鍵共有
+              WebCrypto HMAC による完全ローカル動作。ワンタイムパスワード生成・登録・編集・検証・バックアップ
             </p>
           </div>
 
@@ -324,7 +371,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              認証コード一覧 ({accounts.length})
+              認証コード一覧 {accounts.length} 件
             </button>
             <button
               onClick={() => setActiveTab('generator')}
@@ -334,7 +381,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              アカウント手動登録
+              アカウント新規登録
             </button>
             <button
               onClick={() => setActiveTab('verify')}
@@ -364,7 +411,7 @@ export const TwoFactorAuthTool: React.FC = () => {
       {activeTab === 'authenticator' && (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-            <span>登録済みアカウント ({accounts.length} 件)</span>
+            <span>登録済みアカウント {accounts.length} 件</span>
             <div className="flex items-center gap-3">
               <span className="font-mono text-slate-400 tabular-nums">
                 現在時刻: {new Date(now).toLocaleTimeString()}
@@ -383,10 +430,10 @@ export const TwoFactorAuthTool: React.FC = () => {
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-12 text-center space-y-3">
               <KeyRound className="w-10 h-10 text-slate-600 mx-auto" />
               <div className="text-sm font-semibold text-slate-300">
-                2FA アカウントがまだ登録されていません
+                2FA アカウントが登録されていません
               </div>
               <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                「新規登録・QR生成」タブからシークレットキーを入力またはURIを読み込んでアカウントを作成してください。
+                「アカウント新規登録」タブからシークレットキーを入力またはURIを読み込んでアカウントを作成してください。
               </p>
               <button
                 onClick={() => setActiveTab('generator')}
@@ -424,6 +471,13 @@ export const TwoFactorAuthTool: React.FC = () => {
                       </div>
                       <div className="flex items-center gap-1 shrink-0">
                         <button
+                          onClick={() => handleStartEdit(acc)}
+                          className="p-1 rounded text-slate-500 hover:text-indigo-300 hover:bg-slate-800 transition-colors"
+                          title="アカウントを編集"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
                           onClick={() => handleDeleteAccount(acc.id)}
                           className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800 transition-colors"
                           title="アカウントを削除"
@@ -442,7 +496,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                             : info.code}
                         </div>
                         <div className="text-[10px] text-slate-500 font-mono">
-                          {acc.algorithm} · {acc.digits}桁 {isHotp ? `· Counter: ${acc.counter}` : `· ${acc.period}秒周期`}
+                          {acc.algorithm} · {acc.digits}桁 {isHotp ? `· カウンタ: ${acc.counter}` : `· ${acc.period}秒周期`}
                         </div>
                       </div>
 
@@ -456,7 +510,6 @@ export const TwoFactorAuthTool: React.FC = () => {
                             <RefreshCw className="w-4 h-4" />
                           </button>
                         ) : (
-                          /* Circular Progress or bar */
                           <div className="relative w-8 h-8 flex items-center justify-center">
                             <svg className="w-8 h-8 transform -rotate-90">
                               <circle
@@ -514,10 +567,157 @@ export const TwoFactorAuthTool: React.FC = () => {
         </div>
       )}
 
+      {/* Edit Modal */}
+      {editingAccount && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl max-w-lg w-full p-5 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="font-bold text-slate-100 flex items-center gap-2 text-sm">
+                <Edit2 className="w-4 h-4 text-indigo-400" />
+                <span>アカウント情報の編集</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingAccount(null)}
+                className="text-slate-500 hover:text-slate-300"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 mb-1">Issuer・サービス名</label>
+                <input
+                  type="text"
+                  value={editIssuer}
+                  onChange={(e) => setEditIssuer(e.target.value)}
+                  placeholder="例: GitHub, Google, AWS"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-slate-400 mb-1">アカウント名・ユーザー識別子</label>
+                <input
+                  type="text"
+                  value={editLabel}
+                  onChange={(e) => setEditLabel(e.target.value)}
+                  placeholder="ユーザー名 または メールアドレス"
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-400">シークレットキー Base32形式</label>
+                  <button
+                    type="button"
+                    onClick={() => setShowEditSecret(!showEditSecret)}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200"
+                  >
+                    {showEditSecret ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    <span>{showEditSecret ? 'マスクする' : '表示する'}</span>
+                  </button>
+                </div>
+                <input
+                  type={showEditSecret ? 'text' : 'password'}
+                  value={editSecret}
+                  onChange={(e) => setEditSecret(e.target.value.toUpperCase())}
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">認証タイプ</label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="totp">TOTP 時間同期</option>
+                    <option value="hotp">HOTP カウンタ同期</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">アルゴリズム</label>
+                  <select
+                    value={editAlgo}
+                    onChange={(e) => setEditAlgo(e.target.value as any)}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="SHA-1">SHA-1 標準</option>
+                    <option value="SHA-256">SHA-256</option>
+                    <option value="SHA-512">SHA-512</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">桁数</label>
+                  <select
+                    value={editDigits}
+                    onChange={(e) => setEditDigits(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value={6}>6桁 標準</option>
+                    <option value={8}>8桁</option>
+                  </select>
+                </div>
+                {editType === 'totp' ? (
+                  <div>
+                    <label className="block text-slate-400 mb-1">更新周期 秒</label>
+                    <input
+                      type="number"
+                      value={editPeriod}
+                      onChange={(e) => setEditPeriod(Number(e.target.value) || 30)}
+                      min={10}
+                      max={120}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-slate-400 mb-1">カウンタ値</label>
+                    <input
+                      type="number"
+                      value={editCounter}
+                      onChange={(e) => setEditCounter(Number(e.target.value) || 0)}
+                      min={0}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="flex gap-2 pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => setEditingAccount(null)}
+                className="flex-1 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium text-xs"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                disabled={!editSecret.trim()}
+                className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-1 shadow-sm"
+              >
+                <Save className="w-3.5 h-3.5" />
+                <span>変更を保存</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Tab: Generator & New Account */}
       {activeTab === 'generator' && (
         <div className="max-w-2xl mx-auto">
-          {/* Setup Form */}
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 space-y-5">
             <div className="space-y-1">
               <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
@@ -525,24 +725,24 @@ export const TwoFactorAuthTool: React.FC = () => {
                 2FA アカウントの手動追加
               </h3>
               <p className="text-xs text-slate-400">
-                外部サービス（GitHub、AWS、Google 等）の2段階認証設定画面に表示されたシークレットキーを入力して登録します。
+                外部サービスの2段階認証設定画面に表示されたシークレットキーを入力して登録します。
               </p>
             </div>
 
             <div className="space-y-4 text-xs">
               <div>
-                <label className="block text-slate-400 mb-1">発行者 (Issuer / サービス名)</label>
+                <label className="block text-slate-400 mb-1">Issuer・サービス名</label>
                 <input
                   type="text"
                   value={newIssuer}
                   onChange={(e) => setNewIssuer(e.target.value)}
-                  placeholder="サービス名 (例: GitHub, AWS, Google)"
+                  placeholder="例: GitHub, AWS, Google"
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
                 />
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">アカウント名 / ユーザー識別子</label>
+                <label className="block text-slate-400 mb-1">アカウント名・ユーザー識別子</label>
                 <input
                   type="text"
                   value={newLabel}
@@ -554,7 +754,7 @@ export const TwoFactorAuthTool: React.FC = () => {
 
               <div>
                 <div className="flex items-center justify-between mb-1">
-                  <label className="text-slate-400">シークレットキー (Base32)</label>
+                  <label className="text-slate-400">シークレットキー Base32形式</label>
                   <button
                     type="button"
                     onClick={() => setShowNewSecret(!showNewSecret)}
@@ -578,7 +778,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                     type={showNewSecret ? 'text' : 'password'}
                     value={newSecret}
                     onChange={(e) => setNewSecret(e.target.value.toUpperCase())}
-                    placeholder="サービスから発行されたBase32シークレットキーを入力"
+                    placeholder="Base32シークレットキーを入力"
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 font-mono text-xs pr-10"
                   />
                   <div className="absolute right-3 top-2.5 text-slate-500">
@@ -586,7 +786,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                   </div>
                 </div>
                 <span className="text-[10px] text-slate-500 mt-1 block">
-                  RFC 4648 Base32規格 (A-Z, 2-7)。外部サービス管理画面の2FA設定用キーをそのまま貼り付けてください。
+                  RFC 4648 Base32規格 A-Z, 2-7
                 </span>
               </div>
 
@@ -598,8 +798,8 @@ export const TwoFactorAuthTool: React.FC = () => {
                     onChange={(e) => setNewType(e.target.value as any)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="totp">TOTP (時間同期 30秒)</option>
-                    <option value="hotp">HOTP (カウンタ同期)</option>
+                    <option value="totp">TOTP 時間同期 30秒</option>
+                    <option value="hotp">HOTP カウンタ同期</option>
                   </select>
                 </div>
 
@@ -610,7 +810,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                     onChange={(e) => setNewAlgo(e.target.value as any)}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
-                    <option value="SHA-1">SHA-1 (標準・Google互換)</option>
+                    <option value="SHA-1">SHA-1 標準</option>
                     <option value="SHA-256">SHA-256</option>
                     <option value="SHA-512">SHA-512</option>
                   </select>
@@ -625,14 +825,14 @@ export const TwoFactorAuthTool: React.FC = () => {
                     onChange={(e) => setNewDigits(Number(e.target.value))}
                     className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
                   >
-                    <option value={6}>6 桁 (標準)</option>
+                    <option value={6}>6 桁 標準</option>
                     <option value={8}>8 桁</option>
                   </select>
                 </div>
 
                 {newType === 'totp' && (
                   <div>
-                    <label className="block text-slate-400 mb-1">更新周期 (秒)</label>
+                    <label className="block text-slate-400 mb-1">更新周期 秒</label>
                     <input
                       type="number"
                       value={newPeriod}
@@ -658,7 +858,7 @@ export const TwoFactorAuthTool: React.FC = () => {
               <div className="p-3 rounded-lg bg-emerald-950/20 border border-emerald-900/40 text-emerald-300 text-[11px] flex items-center gap-2">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-emerald-400" />
                 <span>
-                  外部サーバーへのシークレット送信は一切ありません。ブラウザ内ローカルでのみ安全に保持されます。
+                  外部サーバーへのシークレット送信はありません。ブラウザ内ローカルでのみ安全に保持されます。
                 </span>
               </div>
             </div>
@@ -672,17 +872,17 @@ export const TwoFactorAuthTool: React.FC = () => {
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
-              2FA トークン検証シミュレーター
+              2FA トークン検証
             </h3>
             <p className="text-xs text-slate-400">
-              サーバー側認証ロジックをシミュレートし、ユーザーが入力した6桁トークンの妥当性と時刻同期許容幅（Time Step Drift）を検証します。
+              サーバー側認証ロジックに基づき、ワンタイムトークンの妥当性と時刻同期許容幅を検証します。
             </p>
           </div>
 
           <div className="space-y-4 text-xs">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-slate-400">検証用シークレットキー (Base32)</label>
+                <label className="text-slate-400">検証用シークレットキー Base32形式</label>
                 <button
                   type="button"
                   onClick={() => setShowVerifySecret(!showVerifySecret)}
@@ -717,7 +917,7 @@ export const TwoFactorAuthTool: React.FC = () => {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-slate-400 mb-1">検証するワンタイムパスワード (OTP)</label>
+                <label className="block text-slate-400 mb-1">検証するワンタイムパスワード</label>
                 <input
                   type="text"
                   value={verifyCode}
@@ -729,15 +929,15 @@ export const TwoFactorAuthTool: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 mb-1">時刻ドリフト許容範囲 (Window Steps)</label>
+                <label className="block text-slate-400 mb-1">時刻ドリフト許容ステップ</label>
                 <select
                   value={verifyWindow}
                   onChange={(e) => setVerifyWindow(Number(e.target.value))}
                   className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500 h-[42px]"
                 >
-                  <option value={0}>0 (±0秒: 完全一致のみ)</option>
-                  <option value={1}>1 (±30秒: 標準推奨設定)</option>
-                  <option value={2}>2 (±60秒: クロックずれが大きい環境)</option>
+                  <option value={0}>0ステップ 完全一致のみ</option>
+                  <option value={1}>1ステップ 前後30秒許容 標準</option>
+                  <option value={2}>2ステップ 前後60秒許容</option>
                 </select>
               </div>
             </div>
@@ -765,7 +965,7 @@ export const TwoFactorAuthTool: React.FC = () => {
                   )}
                   <div>
                     <div className="text-sm font-bold">
-                      {verifyResult.valid ? '検証成功 (VALID)' : '検証失敗 (INVALID)'}
+                      {verifyResult.valid ? '検証成功' : '検証失敗'}
                     </div>
                     <p className="text-xs mt-1 text-slate-300">{verifyResult.message}</p>
                   </div>
@@ -783,10 +983,10 @@ export const TwoFactorAuthTool: React.FC = () => {
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
               <FileUp className="w-4 h-4 text-indigo-400" />
-              otpauth:// URI のインポート
+              otpauth URI のインポート
             </h3>
             <p className="text-xs text-slate-400">
-              各種サービスや二次元バーコードからコピーした <code className="text-indigo-300 font-mono">otpauth://totp/...</code> 形式のURI文字列を直接貼り付けて登録します。
+              各種サービスや二次元バーコードからコピーした URI 文字列を貼り付けて登録します。
             </p>
 
             <div className="space-y-3 text-xs">
@@ -819,10 +1019,10 @@ export const TwoFactorAuthTool: React.FC = () => {
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-100 flex items-center gap-2">
                 <FileDown className="w-4 h-4 text-emerald-400" />
-                ローカル保管データのバックアップ & 復元
+                ローカル保管データのバックアップと復元
               </h3>
               <p className="text-xs text-slate-400">
-                本ツールの2FAデータはブラウザのLocalStorageに保存されています。デバイス変更やバックアップ用にJSONファイルとしてエクスポート / インポートできます。
+                本ツールの2FAデータはブラウザのLocalStorageに保存されています。デバイス変更やバックアップ用にJSONファイルとしてエクスポート・インポートできます。
               </p>
 
               <div className="pt-2 space-y-3">
@@ -850,7 +1050,7 @@ export const TwoFactorAuthTool: React.FC = () => {
             </div>
 
             <div className="text-[11px] text-slate-500 font-mono">
-              ※ バックアップファイルには平文のシークレットキーが含まれます。安全な暗号化ストレージに保管してください。
+              バックアップファイルには平文のシークレットキーが含まれます。安全なストレージに保管してください。
             </div>
           </div>
         </div>

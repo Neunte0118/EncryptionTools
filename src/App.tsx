@@ -19,7 +19,6 @@ import { TwoFactorAuthTool } from './components/TwoFactorAuthTool';
 import { BinaryConverterStudio } from './components/BinaryConverterStudio';
 import { SelfDecryptingPackageTool } from './components/SelfDecryptingPackageTool';
 import { TimelockCryptoTool } from './components/TimelockCryptoTool';
-import { OneTimeNoteTool } from './components/OneTimeNoteTool';
 import { FileShredderTool } from './components/FileShredderTool';
 import { PgpStudioTool } from './components/PgpStudioTool';
 import { UnifiedCompressionTool } from './components/UnifiedCompressionTool';
@@ -53,7 +52,6 @@ import {
   KeyRound,
   FileCode,
   Hourglass,
-  Flame,
   Trash2,
   Star,
   Clock,
@@ -67,14 +65,11 @@ import {
 export type Category = 'action' | 'vault' | 'crypto' | 'share' | 'file' | 'verify';
 
 export type Tab =
-  // アクション (一括実行)
   | 'action-pipeline'
-  // 鍵管理
   | 'vault'
   | 'two-factor'
   | 'generator'
   | 'random'
-  // 暗号化・復号
   | 'aes'
   | 'chacha'
   | 'rsa'
@@ -85,17 +80,13 @@ export type Tab =
   | 'abe'
   | 'timelock'
   | 'pgp'
-  // 共有
-  | 'onetime-note'
   | 'self-decrypt'
   | 'shamir'
   | 'p2p'
-  // ファイル編集
   | 'compression'
   | 'shredder'
   | 'metadata'
   | 'steganography'
-  // 検証
   | 'hashes'
   | 'binary-studio'
   | 'signatures'
@@ -128,23 +119,23 @@ export default function App() {
   // Search filter
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Favorites (pinned tools) saved in localStorage
+  // Favorites pinned tools
   const [favorites, setFavorites] = useState<Tab[]>(() => {
     try {
       const saved = localStorage.getItem('lcv_pinned_favorites');
-      return saved ? JSON.parse(saved) : ['vault', 'onetime-note', 'aes'];
+      return saved ? JSON.parse(saved).filter((id: string) => id !== 'onetime-note') : ['vault', 'aes'];
     } catch {
-      return ['vault', 'onetime-note', 'aes'];
+      return ['vault', 'aes'];
     }
   });
 
-  // Recent tools saved in localStorage (max 4)
+  // Recent tools max 4
   const [recents, setRecents] = useState<Tab[]>(() => {
     try {
       const saved = localStorage.getItem('lcv_recent_tools');
-      return saved ? JSON.parse(saved) : ['vault', 'two-factor', 'onetime-note'];
+      return saved ? JSON.parse(saved).filter((id: string) => id !== 'onetime-note') : ['vault', 'two-factor'];
     } catch {
-      return ['vault', 'two-factor', 'onetime-note'];
+      return ['vault', 'two-factor'];
     }
   });
 
@@ -163,13 +154,6 @@ export default function App() {
     action: 'sign' | 'verify' | 'encrypt' | 'decrypt';
     key: KeyVaultItem;
   } | null>(null);
-
-  // Check URL fragment for note= on mount
-  useEffect(() => {
-    if (window.location.hash && window.location.hash.includes('note=')) {
-      setActiveTab('onetime-note');
-    }
-  }, []);
 
   // Close mobile drawer on ESC key
   useEffect(() => {
@@ -254,7 +238,6 @@ export default function App() {
   };
 
   const tools: ToolItem[] = [
-    // 0. アクション (一括実行)
     {
       id: 'action-pipeline',
       title: '一括実行パイプライン',
@@ -262,8 +245,6 @@ export default function App() {
       icon: Zap,
       category: 'action',
     },
-
-    // 1. 鍵管理
     {
       id: 'vault',
       title: '暗号化鍵保管庫',
@@ -274,184 +255,169 @@ export default function App() {
     },
     {
       id: 'two-factor',
-      title: 'TOTP (二要素認証)',
-      description: 'RFC 6238 タイムスタンプ型ワンタイム認証コード生成・インポート',
+      title: '2要素認証管理',
+      description: 'タイムスタンプ型ワンタイム認証コード生成・登録編集・インポート',
       icon: KeyRound,
       category: 'vault',
     },
     {
       id: 'generator',
-      title: '暗号鍵ペア生成 (RSA / EC / AES)',
-      description: 'RSA / ECDSA / ECDH / AES-GCM 鍵ペア生成とエクスポート',
+      title: '暗号鍵ペア生成',
+      description: 'RSA・ECDSA・ECDH・AES-GCM 鍵ペア生成とエクスポート',
       icon: PlusCircle,
       category: 'vault',
     },
     {
       id: 'random',
-      title: '暗号論的擬似乱数 (CSPRNG / UUIDv7)',
-      description: '暗号論的疑似乱数（CSPRNG）・パスワード・UUIDv7生成',
+      title: '暗号論的擬似乱数生成',
+      description: '暗号論的疑似乱数・強固なパスワード・UUIDv7生成',
       icon: Dices,
       category: 'vault',
     },
-
-    // 2. 暗号化・復号
     {
       id: 'aes',
-      title: 'AES-256 (GCM / CBC)',
-      description: 'NIST FIPS 197 256-bit共通鍵認証付き暗号化（テキスト・ファイル）',
+      title: 'AES-256 暗号化',
+      description: '256ビット共通鍵認証付き暗号化・復号',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'chacha',
       title: 'ChaCha20-Poly1305',
-      description: 'RFC 8439 高速認証付きストリーム暗号（テキスト・ファイル）',
+      description: '高速認証付きストリーム暗号化・復号',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'rsa',
       title: 'RSA-OAEP',
-      description: 'PKCS#1 v2.2 OAEP 公開鍵暗号化およびハイブリッドファイル暗号化',
+      description: '公開鍵暗号化およびハイブリッドファイル暗号化',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'ecdh',
-      title: 'ECDH (楕円曲線ディフィー・ヘルマン)',
-      description: 'P-256 / P-384 / P-521 楕円曲線ディフィー・ヘルマン共通鍵導出',
+      title: 'ECDH 鍵共有',
+      description: '楕円曲線ディフィー・ヘルマン共通鍵導出',
       icon: Lock,
       category: 'crypto',
     },
     {
       id: 'pqc',
-      title: '耐量子暗号 (ML-KEM / ML-DSA)',
-      description: 'NIST標準格子暗号 FIPS 203 ML-KEM (Kyber) & FIPS 204 ML-DSA (Dilithium)',
+      title: '耐量子暗号',
+      description: '格子暗号 ML-KEM および ML-DSA による暗号化・署名',
       icon: Atom,
       category: 'crypto',
     },
     {
       id: 'visual-crypto',
-      title: '視覚復号型暗号 (Visual Cryptography)',
-      description: 'Naor-Shamir (2,2) 視覚秘密分散法。計算不要・透明シート重ね合わせ肉眼復号',
+      title: '視覚復号型暗号',
+      description: '秘密分散法による透過シート重ね合わせ復号',
       icon: Eye,
       category: 'crypto',
     },
     {
       id: 'fhe',
-      title: '完全準同型暗号 (FHE / DGHV & Paillier)',
-      description: '暗号化状態での論理回路・全加算器・統計合算計算',
+      title: '完全準同型暗号',
+      description: '暗号化ファイル生成・秘密鍵不要の準同型集計・復号レポート',
       icon: Cpu,
       category: 'crypto',
     },
     {
       id: 'abe',
-      title: '属性ベース暗号 (CP-ABE)',
-      description: 'Ciphertext-Policy ABE による役職・属性論理式ポリシーアクセス制御',
+      title: '属性ベース暗号',
+      description: 'アクセスポリシー暗号化ファイル生成・属性秘密鍵配布・復号',
       icon: Tag,
       category: 'crypto',
     },
     {
       id: 'timelock',
-      title: 'タイムロック暗号 (Timelock / drand)',
-      description: 'drand Quicknet 分散ビーコンによる未来指定時刻までの時限暗号封印',
+      title: 'タイムロック暗号',
+      description: '分散ビーコンによる指定時刻までの時限暗号封印',
       icon: Hourglass,
       category: 'crypto',
     },
     {
       id: 'pgp',
-      title: 'OpenPGP (RFC 4880)',
-      description: 'RFC 4880 OpenPGP 鍵生成・ASCIIアーマー暗号化・復号・署名',
+      title: 'OpenPGP',
+      description: 'OpenPGP 鍵生成・暗号化・復号・署名',
       icon: Shield,
       category: 'crypto',
     },
-
-    // 3. 共有
-    {
-      id: 'onetime-note',
-      title: 'ワンタイム暗号共有 (Zero-Knowledge Note)',
-      description: 'URLフラグメント完全秘匿・有効期限切れ自動破棄・自爆タイマー',
-      icon: Flame,
-      category: 'share',
-    },
     {
       id: 'self-decrypt',
-      title: '自己復号パッケージ (Self-Decrypting HTML)',
-      description: 'Web Crypto API内蔵・ブラウザ単体で復号可能な単一自己完結HTML',
+      title: '自己復号パッケージ',
+      description: 'ブラウザ単体で復号可能な単一自己完結HTML出力',
       icon: FileCode,
       category: 'share',
     },
     {
       id: 'shamir',
-      title: 'シャミア秘密分散法 (Shamir SSS)',
-      description: '秘密情報を (k, n) 閾値シェアに分割・復元',
+      title: 'シャミア秘密分散法',
+      description: '秘密情報を閾値シェアに分割・復元',
       icon: Split,
       category: 'share',
     },
     {
       id: 'p2p',
-      title: 'WebRTC E2EE (P2P通信)',
-      description: 'WebRTC 完全サーバーレス直接通信（チャット・ファイル・鍵交換）',
+      title: 'P2P暗号通信',
+      description: '完全直接通信によるチャット・ファイル・鍵交換',
       icon: Radio,
       category: 'share',
     },
-
-    // 4. ファイル編集
     {
       id: 'compression',
-      title: 'アーカイブ圧縮・展開 (ZIP / Tar / Gzip)',
-      description: 'AES-256 暗号化ZIP作成・解凍および高速Gzipストリーミング',
+      title: 'アーカイブ圧縮・展開',
+      description: '暗号化ZIP作成・解凍および高速Gzipストリーミング',
       icon: FileArchive,
       category: 'file',
     },
     {
       id: 'shredder',
-      title: 'データ完全消去 (DoD 5220.22-M / Gutmann)',
-      description: 'DoD 5220.22-M / Gutmann 準拠の不可逆ノイズ上書き破壊',
+      title: 'データ完全消去',
+      description: '複数回上書きによる不可逆データ破壊',
       icon: Trash2,
       category: 'file',
     },
     {
       id: 'metadata',
-      title: 'メタデータ消去・編集 (Exif / ID3 / PDF)',
-      description: '画像Exif・音声・動画・PDFメタデータの閲覧・編集・完全消去',
+      title: 'メタデータ消去・編集',
+      description: '画像・音声・動画・PDFメタデータの閲覧・編集・完全消去',
       icon: Tag,
       category: 'file',
     },
     {
       id: 'steganography',
-      title: 'ステガノグラフィ (LSB画像・WAV音声)',
-      description: '画像ピクセル・WAV音声波形へのデータ不可視埋め込み・抽出',
+      title: 'ステガノグラフィ',
+      description: '画像ピクセル・音声波形へのデータ不可視埋め込み・抽出',
       icon: Eye,
       category: 'file',
     },
-
-    // 5. 検証
     {
       id: 'hashes',
-      title: '暗号学的ハッシュ (SHA-2 / SHA-3 / MD5)',
-      description: 'SHA-256 / SHA-512 / SHA-384 / SHA-1 / MD5 ハッシュ計算と改竄照合',
+      title: '暗号学的ハッシュ',
+      description: 'SHA-256・SHA-512・SHA-3・MD5 ハッシュ計算と改竄照合',
       icon: Hash,
       category: 'verify',
     },
     {
       id: 'binary-studio',
-      title: 'バイナリ・基数変換 (Hex / Base64 / Base58)',
-      description: 'Hex / Base64 / Base58 / 2進 / 10進数相互変換とHexダンプ解析',
+      title: 'バイナリ・基数変換',
+      description: 'Hex・Base64・Base58・2進・10進数相互変換とダンプ解析',
       icon: Binary,
       category: 'verify',
     },
     {
       id: 'signatures',
-      title: '電子署名 (ECDSA / Ed25519 / RSA-PSS)',
-      description: 'RSA-PSS / PKCS#1 / ECDSA による署名生成と改竄検証',
+      title: '電子署名',
+      description: 'RSA・ECDSA・Ed25519 による署名生成と改竄検証',
       icon: FileSignature,
       category: 'verify',
     },
     {
       id: 'ring-signature',
-      title: 'リング署名 (Ed25519-SAG)',
-      description: 'Ed25519-SAG 準拠の完全匿名グループ署名作成と数学的検証',
+      title: 'リング署名',
+      description: '完全匿名グループ署名作成と検証',
       icon: Users,
       category: 'verify',
     },
@@ -650,12 +616,12 @@ export default function App() {
               </div>
             </div>
 
-            {/* Quick Favorites (Pinned) */}
+            {/* Quick Favorites */}
             {!searchQuery.trim() && favorites.length > 0 && (
               <div className="p-3 border-b border-slate-800/80 space-y-1.5">
                 <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-400 uppercase tracking-wider px-1">
                   <Star className="w-3 h-3 fill-amber-400" />
-                  <span>お気に入り (ピン留め)</span>
+                  <span>お気に入り</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {favorites.map((favId) => {
@@ -815,8 +781,6 @@ export default function App() {
           {activeTab === 'pgp' && <PgpStudioTool />}
 
           {/* 3. 共有 */}
-          {activeTab === 'onetime-note' && <OneTimeNoteTool />}
-
           {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
 
           {activeTab === 'shamir' && <ShamirSecretSharingTool />}

@@ -296,3 +296,86 @@ export function paillierMultiplyScalar(
   const k = BigInt(scalar);
   return modPow(c, k, publicKey.n2);
 }
+
+// -------------------------------------------------------------
+// 3. FHE File Packages & Serializers (for Real-World Usage)
+// -------------------------------------------------------------
+
+export interface FheDatasetItem {
+  id: string;
+  label: string;
+  ciphertextHex: string;
+}
+
+export interface FheDatasetPackage {
+  format: 'FHE_PAILLIER_DATASET';
+  version: 1;
+  title: string;
+  publicKey: {
+    n: string;
+    n2: string;
+    g: string;
+    bitLength: number;
+  };
+  items: FheDatasetItem[];
+  createdAt: number;
+}
+
+export interface FheAggregatePackage {
+  format: 'FHE_PAILLIER_AGGREGATE';
+  version: 1;
+  title: string;
+  itemCount: number;
+  publicKey: {
+    n: string;
+    n2: string;
+    g: string;
+    bitLength: number;
+  };
+  aggregateCiphertextHex: string;
+  createdAt: number;
+}
+
+export function serializePaillierPublicKey(pk: PaillierPublicKey) {
+  return {
+    format: 'FHE_PAILLIER_PUBLIC_KEY',
+    n: pk.n.toString(16),
+    n2: pk.n2.toString(16),
+    g: pk.g.toString(16),
+    bitLength: pk.bitLength,
+  };
+}
+
+export function parsePaillierPublicKey(json: any): PaillierPublicKey {
+  if (!json.n || !json.n2 || !json.g) {
+    throw new Error('無効な公開鍵フォーマットです');
+  }
+  return {
+    n: BigInt(`0x${json.n}`),
+    n2: BigInt(`0x${json.n2}`),
+    g: BigInt(`0x${json.g}`),
+    bitLength: json.bitLength || 256,
+  };
+}
+
+export function serializePaillierPrivateKey(sk: PaillierPrivateKey) {
+  return {
+    format: 'FHE_PAILLIER_PRIVATE_KEY',
+    lambda: sk.lambda.toString(16),
+    mu: sk.mu.toString(16),
+    publicKey: serializePaillierPublicKey(sk.publicKey),
+  };
+}
+
+export function parsePaillierPrivateKey(json: any): PaillierPrivateKey {
+  if (!json.lambda || !json.mu || !json.publicKey) {
+    throw new Error('無効な秘密鍵フォーマットです');
+  }
+  const pk = parsePaillierPublicKey(json.publicKey);
+  return {
+    lambda: BigInt(`0x${json.lambda}`),
+    mu: BigInt(`0x${json.mu}`),
+    publicKey: pk,
+  };
+}
+

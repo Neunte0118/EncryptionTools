@@ -8,7 +8,81 @@
  * 4. Combines Tree-based Shamir Secret Sharing with AES-256-GCM envelope encryption.
  */
 
-import { sha256 } from '@noble/hashes/sha256';
+// -------------------------------------------------------------
+// Pure TypeScript Synchronous SHA-256 Implementation (Zero External Dependencies)
+// -------------------------------------------------------------
+
+function sha256Hex(message: string | Uint8Array): string {
+  const bytes = typeof message === 'string' ? new TextEncoder().encode(message) : message;
+  const K = [
+    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
+    0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
+    0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
+    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147, 0x06ca6351, 0x14292967,
+    0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13, 0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85,
+    0xa2bfe8a1, 0xa81a664b, 0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
+    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a, 0x5b9cca4f, 0x682e6ff3,
+    0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2,
+  ];
+
+  let H0 = 0x6a09e667, H1 = 0xbb67ae85, H2 = 0x3c6ef372, H3 = 0xa54ff53a;
+  let H4 = 0x510e527f, H5 = 0x9b05688c, H6 = 0x1f83d9ab, H7 = 0x5be0cd19;
+
+  const l = bytes.length;
+  const bitLen = l * 8;
+  const k = (448 - (bitLen + 8) % 512 + 512) % 512;
+  const totalBytes = l + 1 + k / 8 + 8;
+  const padded = new Uint8Array(totalBytes);
+  padded.set(bytes);
+  padded[l] = 0x80;
+
+  const view = new DataView(padded.buffer);
+  view.setBigUint64(totalBytes - 8, BigInt(bitLen), false);
+
+  const w = new Uint32Array(64);
+  for (let i = 0; i < totalBytes; i += 64) {
+    for (let t = 0; t < 16; t++) {
+      w[t] = view.getUint32(i + t * 4, false);
+    }
+    for (let t = 16; t < 64; t++) {
+      const s0 = ((w[t - 15] >>> 7) | (w[t - 15] << 25)) ^ ((w[t - 15] >>> 18) | (w[t - 15] << 14)) ^ (w[t - 15] >>> 3);
+      const s1 = ((w[t - 2] >>> 17) | (w[t - 2] << 15)) ^ ((w[t - 2] >>> 19) | (w[t - 2] << 13)) ^ (w[t - 2] >>> 10);
+      w[t] = (w[t - 16] + s0 + w[t - 7] + s1) | 0;
+    }
+
+    let a = H0, b = H1, c = H2, d = H3, e = H4, f = H5, g = H6, h = H7;
+    for (let t = 0; t < 64; t++) {
+      const S1 = ((e >>> 6) | (e << 26)) ^ ((e >>> 11) | (e << 21)) ^ ((e >>> 25) | (e << 7));
+      const ch = (e & f) ^ (~e & g);
+      const temp1 = (h + S1 + ch + K[t] + w[t]) | 0;
+      const S0 = ((a >>> 2) | (a << 30)) ^ ((a >>> 13) | (a << 19)) ^ ((a >>> 22) | (a << 10));
+      const maj = (a & b) ^ (a & c) ^ (b & c);
+      const temp2 = (S0 + maj) | 0;
+
+      h = g;
+      g = f;
+      f = e;
+      e = (d + temp1) | 0;
+      d = c;
+      c = b;
+      b = a;
+      a = (temp1 + temp2) | 0;
+    }
+
+    H0 = (H0 + a) | 0;
+    H1 = (H1 + b) | 0;
+    H2 = (H2 + c) | 0;
+    H3 = (H3 + d) | 0;
+    H4 = (H4 + e) | 0;
+    H5 = (H5 + f) | 0;
+    H6 = (H6 + g) | 0;
+    H7 = (H7 + h) | 0;
+  }
+
+  return [H0, H1, H2, H3, H4, H5, H6, H7]
+    .map((v) => (v >>> 0).toString(16).padStart(8, '0'))
+    .join('');
+}
 
 // -------------------------------------------------------------
 // Finite Field & Polynomial Arithmetic (Modulus P = 2^31 - 1, Mersenne prime)
@@ -90,6 +164,9 @@ export interface MasterAuthority {
 }
 
 export interface UserSecretKey {
+  format: 'ABE_USER_KEY';
+  version: 1;
+  authorityId: string;
   userId: string;
   attributes: string[]; // Normalized lowercase attributes
   userBlindingHex: string;
@@ -98,14 +175,27 @@ export interface UserSecretKey {
 }
 
 export interface AbeCipherPackage {
+  format: 'ABE_CIPHER_PACKAGE';
   version: 1;
   algorithm: 'CP-ABE-AES256GCM';
+  authorityId: string;
   policyExpression: string;
   policyTree: PolicyNode;
   leafCipherShares: Record<string, string>; // leafNodeId -> encrypted share hex
   ivHex: string;
   ciphertextBase64: string;
+  fileName?: string;
+  fileType?: string;
+  isBinary?: boolean;
   createdAt: number;
+}
+
+export interface AbeDecryptedResult {
+  text?: string;
+  binaryData?: Uint8Array;
+  fileName?: string;
+  fileType?: string;
+  isBinary: boolean;
 }
 
 // -------------------------------------------------------------
@@ -260,18 +350,14 @@ export function issueUserKey(
 
   for (const attr of attributes) {
     const cleanAttr = attr.trim().toLowerCase();
-    // Token = H(MSK || cleanAttr || userBlinding)
-    const h = sha256.create();
-    h.update(new TextEncoder().encode(authority.masterSecretKeyHex));
-    h.update(new TextEncoder().encode(`::${cleanAttr}::`));
-    h.update(new TextEncoder().encode(userBlindingHex));
-    const digest = h.digest();
-    attributeTokens[cleanAttr] = Array.from(digest)
-      .map((b) => b.toString(16).padStart(2, '0'))
-      .join('');
+    const tokenHex = sha256Hex(`${authority.masterSecretKeyHex}::${cleanAttr}::`);
+    attributeTokens[cleanAttr] = tokenHex;
   }
 
   return {
+    format: 'ABE_USER_KEY',
+    version: 1,
+    authorityId: authority.publicParamsId,
     userId,
     attributes: attributes.map((a) => a.trim()),
     userBlindingHex,
@@ -285,21 +371,14 @@ export function issueUserKey(
 // -------------------------------------------------------------
 
 export async function encryptWithPolicy(
-  plaintext: string,
+  payload: string | Uint8Array,
   policyExpression: string,
-  authority: MasterAuthority
+  authority: MasterAuthority,
+  fileMeta?: { fileName?: string; fileType?: string; isBinary?: boolean }
 ): Promise<AbeCipherPackage> {
   const tree = parsePolicyExpression(policyExpression);
 
-  // 1. Generate 256-bit AES symmetric key
-  const aesKey = await window.crypto.subtle.generateKey(
-    { name: 'AES-GCM', length: 256 },
-    true,
-    ['encrypt', 'decrypt']
-  );
-  const rawAesKey = await window.crypto.subtle.exportKey('raw', aesKey);
-
-  // Root secret s in finite field [1, P - 1]
+  // Root secret in finite field [1, P - 1]
   const rootSecretBytes = new Uint8Array(4);
   window.crypto.getRandomValues(rootSecretBytes);
   let rootSecret = 0n;
@@ -307,22 +386,18 @@ export async function encryptWithPolicy(
   rootSecret = mod(rootSecret, P);
   if (rootSecret === 0n) rootSecret = 1234567n;
 
-  // Derive master attribute pad: padKey = H(MSK || cleanAttr)
   const leafCipherShares: Record<string, string> = {};
 
-  // 2. Share rootSecret recursively down the tree
+  // Share rootSecret recursively down the tree
   function distributeSecret(node: PolicyNode, secret: bigint) {
     if (node.type === 'LEAF') {
       const cleanAttr = (node.attribute || '').trim().toLowerCase();
-      // Attribute Master Token = H(MSK || cleanAttr)
-      const h = sha256.create();
-      h.update(new TextEncoder().encode(authority.masterSecretKeyHex));
-      h.update(new TextEncoder().encode(`::${cleanAttr}::`));
-      const padKey = h.digest();
+      const padHex = sha256Hex(`${authority.masterSecretKeyHex}::${cleanAttr}::`);
 
-      // Mask share with padKey mod P
       let padInt = 0n;
-      for (let i = 0; i < 4; i++) padInt = (padInt << 8n) | BigInt(padKey[i]);
+      for (let i = 0; i < 4; i++) {
+        padInt = (padInt << 8n) | BigInt(parseInt(padHex.substr(i * 2, 2), 16));
+      }
       const maskedShare = mod(secret + padInt, P);
 
       leafCipherShares[node.id] = maskedShare.toString(16).padStart(8, '0');
@@ -339,15 +414,14 @@ export async function encryptWithPolicy(
 
   distributeSecret(tree, rootSecret);
 
-  // 3. Encrypt payload with AES-GCM, where Key is derived from (rootSecret || rawAesKey)
-  // To bind symmetric payload strictly to rootSecret:
+  // Encrypt payload with AES-GCM
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
-  const payloadBytes = new TextEncoder().encode(plaintext);
+  const payloadBytes = typeof payload === 'string' ? new TextEncoder().encode(payload) : payload;
 
-  // Derive symmetric key: H(rootSecret)
-  const kdf = sha256.create();
-  kdf.update(new TextEncoder().encode(`ABE_ROOT_SECRET_${rootSecret}`));
-  const derivedKeyBytes = kdf.digest();
+  const derivedKeyHex = sha256Hex(`ABE_ROOT_SECRET_${rootSecret}`);
+  const derivedKeyBytes = new Uint8Array(
+    derivedKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+  );
 
   const symKey = await window.crypto.subtle.importKey(
     'raw',
@@ -360,7 +434,7 @@ export async function encryptWithPolicy(
   const cipherBuf = await window.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     symKey,
-    payloadBytes
+    payloadBytes as any
   );
 
   const ivHex = Array.from(iv)
@@ -376,13 +450,18 @@ export async function encryptWithPolicy(
   const ciphertextBase64 = btoa(binary);
 
   return {
+    format: 'ABE_CIPHER_PACKAGE',
     version: 1,
     algorithm: 'CP-ABE-AES256GCM',
+    authorityId: authority.publicParamsId,
     policyExpression,
     policyTree: tree,
     leafCipherShares,
     ivHex,
     ciphertextBase64,
+    fileName: fileMeta?.fileName,
+    fileType: fileMeta?.fileType,
+    isBinary: fileMeta?.isBinary,
     createdAt: Date.now(),
   };
 }
@@ -393,16 +472,15 @@ export async function encryptWithPolicy(
 
 export async function decryptWithUserKey(
   pkg: AbeCipherPackage,
-  userKey: UserSecretKey,
-  authority: MasterAuthority
-): Promise<string> {
+  userKey: UserSecretKey
+): Promise<AbeDecryptedResult> {
   const normUserAttrs = new Set(userKey.attributes.map((a) => a.trim().toLowerCase()));
 
   // 1. Check policy satisfaction
   const isSatisfied = evaluatePolicyTree(pkg.policyTree, userKey.attributes);
   if (!isSatisfied) {
     throw new Error(
-      `復号拒否: ユーザーの属性 [${userKey.attributes.join(', ')}] はアクセスポリシー "${pkg.policyExpression}" を満たしていません。復号は数学的に不可能です。`
+      `復号拒否: 所持する属性 [${userKey.attributes.join(', ')}] はアクセスポリシー "${pkg.policyExpression}" を満たしていません。`
     );
   }
 
@@ -416,14 +494,14 @@ export async function decryptWithUserKey(
       if (!maskedHex) return null;
       const maskedShare = BigInt(`0x${maskedHex}`);
 
-      // Unmask share using authority MSK
-      const h = sha256.create();
-      h.update(new TextEncoder().encode(authority.masterSecretKeyHex));
-      h.update(new TextEncoder().encode(`::${cleanAttr}::`));
-      const padKey = h.digest();
+      // Unmask share using user's attribute token directly
+      const tokenHex = userKey.attributeTokens[cleanAttr];
+      if (!tokenHex) return null;
 
       let padInt = 0n;
-      for (let i = 0; i < 4; i++) padInt = (padInt << 8n) | BigInt(padKey[i]);
+      for (let i = 0; i < 4; i++) {
+        padInt = (padInt << 8n) | BigInt(parseInt(tokenHex.substr(i * 2, 2), 16));
+      }
 
       return mod(maskedShare - padInt, P);
     }
@@ -450,9 +528,10 @@ export async function decryptWithUserKey(
   }
 
   // 3. Derive symmetric key from recoveredRoot
-  const kdf = sha256.create();
-  kdf.update(new TextEncoder().encode(`ABE_ROOT_SECRET_${recoveredRoot}`));
-  const derivedKeyBytes = kdf.digest();
+  const derivedKeyHex = sha256Hex(`ABE_ROOT_SECRET_${recoveredRoot}`);
+  const derivedKeyBytes = new Uint8Array(
+    derivedKeyHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+  );
 
   const symKey = await window.crypto.subtle.importKey(
     'raw',
@@ -479,8 +558,26 @@ export async function decryptWithUserKey(
       symKey,
       cipherBytes as any
     );
-    return new TextDecoder('utf-8').decode(decBuf);
+    const u8 = new Uint8Array(decBuf);
+
+    if (pkg.isBinary) {
+      return {
+        binaryData: u8,
+        fileName: pkg.fileName,
+        fileType: pkg.fileType,
+        isBinary: true,
+      };
+    } else {
+      const text = new TextDecoder('utf-8').decode(u8);
+      return {
+        text,
+        fileName: pkg.fileName,
+        fileType: pkg.fileType,
+        isBinary: false,
+      };
+    }
   } catch {
-    throw new Error('暗号文の復号に失敗しました（秘密鍵が不一致または破損）');
+    throw new Error('暗号文の復号に失敗しました。属性鍵が破損しているかポリシーに適合しません。');
   }
 }
+

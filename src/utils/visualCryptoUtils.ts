@@ -33,19 +33,68 @@ const BALANCED_PATTERNS: [boolean, boolean, boolean, boolean][] = [
  */
 export function renderTextToBinaryImageData(
   text: string,
-  maxWidth: number = 320,
-  fontSize: number = 36
+  maxWidth: number = 360,
+  fontSize: number = 32
 ): ImageData {
+  const offscreen = document.createElement('canvas');
+  const testCtx = offscreen.getContext('2d');
+  if (!testCtx) throw new Error('Canvas 2D context not available');
+
+  testCtx.font = `bold ${fontSize}px sans-serif`;
+
+  // Auto-wrap text lines based on width
+  const rawLines = text.split('\n');
+  const wrappedLines: string[] = [];
+  const maxLineWidth = Math.max(300, maxWidth - 60);
+
+  for (const rawLine of rawLines) {
+    if (!rawLine) {
+      wrappedLines.push('');
+      continue;
+    }
+    let currentLine = '';
+    for (const char of rawLine) {
+      const testLine = currentLine + char;
+      const width = testCtx.measureText(testLine).width;
+      if (width > maxLineWidth && currentLine.length > 0) {
+        wrappedLines.push(currentLine);
+        currentLine = char;
+      } else {
+        currentLine = testLine;
+      }
+    }
+    if (currentLine) {
+      wrappedLines.push(currentLine);
+    }
+  }
+
+  // Calculate required canvas size with safe padding
+  let actualMaxTextWidth = 0;
+  for (const line of wrappedLines) {
+    const w = testCtx.measureText(line).width;
+    if (w > actualMaxTextWidth) actualMaxTextWidth = w;
+  }
+
+  const paddingX = 36;
+  const paddingY = 32;
+  const lineHeight = Math.round(fontSize * 1.35);
+
+  const calculatedWidth = Math.max(260, Math.ceil(actualMaxTextWidth + paddingX * 2));
+  const calculatedHeight = Math.max(140, Math.ceil(wrappedLines.length * lineHeight + paddingY * 2));
+
+  // Ensure even dimensions for 2x2 subpixel scaling
+  const canvasW = calculatedWidth % 2 === 0 ? calculatedWidth : calculatedWidth + 1;
+  const canvasH = calculatedHeight % 2 === 0 ? calculatedHeight : calculatedHeight + 1;
+
   const canvas = document.createElement('canvas');
+  canvas.width = canvasW;
+  canvas.height = canvasH;
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   if (!ctx) throw new Error('Canvas 2D context not available');
 
-  canvas.width = maxWidth;
-  canvas.height = 160;
-
   // Fill pure white background
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, canvasW, canvasH);
 
   // Render text bold black
   ctx.fillStyle = '#000000';
@@ -53,16 +102,14 @@ export function renderTextToBinaryImageData(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
 
-  // Handle multi-line if needed
-  const lines = text.split('\n');
-  const lineHeight = fontSize * 1.3;
-  const startY = canvas.height / 2 - ((lines.length - 1) * lineHeight) / 2;
+  const totalTextHeight = wrappedLines.length * lineHeight;
+  const startY = (canvasH - totalTextHeight) / 2 + lineHeight / 2;
 
-  lines.forEach((line, idx) => {
-    ctx.fillText(line, canvas.width / 2, startY + idx * lineHeight);
+  wrappedLines.forEach((line, idx) => {
+    ctx.fillText(line, canvasW / 2, startY + idx * lineHeight);
   });
 
-  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+  return ctx.getImageData(0, 0, canvasW, canvasH);
 }
 
 /**

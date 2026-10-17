@@ -5,7 +5,6 @@ import {
   bufferToBase64,
 } from '../utils/cryptoUtils';
 import { stripAllFileMetadata } from '../utils/metadataUtils';
-import { createOneTimeNoteLink } from '../utils/oneTimeNoteUtils';
 import { generateSelfDecryptingHtml } from '../utils/selfDecryptingPackage';
 import { createEncryptedZip } from '../utils/zipUtils';
 import { createTarArchive, compressTarToGz } from '../utils/tarUtils';
@@ -171,53 +170,42 @@ export const ActionPipelinesTool: React.FC = () => {
     }
   };
 
-  // Pipeline 2 Handler: Dual Share
+  // Pipeline 2 Handler: Self-Decrypting Package
   const handleRunMultiShare = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!shareText.trim()) return setErrorP2('秘密メッセージを入力してください');
+    if (!sharePassword.trim()) return setErrorP2('復号パスワードを入力してください');
 
     setErrorP2('');
     setResultP2(null);
     setIsProcessingP2(true);
 
     try {
-      const expiresAt = Date.now() + durationMinutes * 60 * 1000;
-      const baseNoteUrl = window.location.origin + window.location.pathname;
-
-      // 1. One-time link
-      const { shareableUrl } = await createOneTimeNoteLink(shareText.trim(), {
-        baseUrl: baseNoteUrl,
-        title: shareTitle.trim() || undefined,
-        expiresAt,
-        burnAfterSeconds: burnAfterSeconds > 0 ? burnAfterSeconds : undefined,
-        password: sharePassword.trim() || undefined,
-      });
-
-      // QR Code
-      const qrDataUrl = await QRCode.toDataURL(shareableUrl, {
-        margin: 1,
-        width: 180,
-        color: { dark: '#0f172a', light: '#ffffff' },
-      });
-
-      // 2. Self-Decrypting HTML
+      // Self-Decrypting HTML
       const htmlString = await generateSelfDecryptingHtml({
         type: 'text',
         textContent: shareText.trim(),
         title: shareTitle.trim() || 'セキュアメッセージ',
-        password: sharePassword.trim() || 'decrypt-offline',
-        hint: sharePassword.trim() ? undefined : 'パスワード: decrypt-offline',
+        password: sharePassword.trim(),
+        hint: undefined,
       });
 
       const htmlBlob = new Blob([htmlString], { type: 'text/html;charset=utf-8' });
       const htmlDownloadUrl = URL.createObjectURL(htmlBlob);
 
+      // Generate QR Code containing the file title and confirmation
+      const qrDataUrl = await QRCode.toDataURL(`SECURE_ENCRYPTED_PACKAGE:${shareTitle.trim() || 'package'}`, {
+        margin: 1,
+        width: 180,
+        color: { dark: '#0f172a', light: '#ffffff' },
+      });
+
       setResultP2({
-        oneTimeUrl: shareableUrl,
+        oneTimeUrl: '',
         qrDataUrl,
         htmlDownloadUrl,
         htmlFilename: `${shareTitle.trim() || 'secure-note'}.html`,
-        expiresAt,
+        expiresAt: 0,
       });
     } catch (err: any) {
       setErrorP2(`生成エラー: ${err.message}`);
@@ -656,53 +644,23 @@ export const ActionPipelinesTool: React.FC = () => {
 
             {resultP2 ? (
               <div className="space-y-4">
-                {/* 1. One-time URL */}
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2.5">
-                  <div className="flex items-center justify-between">
-                    <span className="font-semibold text-amber-300 flex items-center gap-1.5">
-                      <Flame className="w-3.5 h-3.5 text-amber-400" />
-                      <span>形式 1: ワンタイム自爆リンク</span>
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(resultP2.oneTimeUrl, 'oneTimeUrl')}
-                      className="px-2 py-0.5 rounded bg-amber-600/30 text-amber-300 hover:bg-amber-600/50 flex items-center gap-1"
-                    >
-                      {copiedKey === 'oneTimeUrl' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>リンクをコピー</span>
-                    </button>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <img
-                      src={resultP2.qrDataUrl}
-                      alt="QR Code"
-                      className="w-20 h-20 rounded border border-slate-800 bg-white p-1 shrink-0"
-                    />
-                    <div className="min-w-0 flex-1 space-y-1 text-[11px] text-slate-400">
-                      <div className="truncate text-slate-200 font-mono">{resultP2.oneTimeUrl}</div>
-                      <div>相手のブラウザで一度開くと自爆タイマーが起動します。</div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Self-Decrypting HTML */}
-                <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-2">
+                {/* Self-Decrypting HTML */}
+                <div className="p-3.5 bg-slate-950 border border-slate-800 rounded-lg space-y-3">
                   <div className="flex items-center justify-between">
                     <span className="font-semibold text-indigo-300 flex items-center gap-1.5">
                       <FileCode className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>形式 2: 自己復号スタンドアロンHTML</span>
+                      <span>自己復号スタンドアロンHTML</span>
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400">
-                    ブラウザにドラッグ＆ドロップするだけでオフライン復号できる単一HTMLファイル。
+                    外部サーバー不要で、ブラウザにドラッグ＆ドロップしてパスワードを入力するだけで復号できる単一HTMLファイルです。
                   </p>
                   <a
                     href={resultP2.htmlDownloadUrl}
                     download={resultP2.htmlFilename}
-                    className="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-center gap-2"
+                    className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
                   >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>自己復号HTMLを保存 ({resultP2.htmlFilename})</span>
+                  NullNotifyMe
                   </a>
                 </div>
               </div>

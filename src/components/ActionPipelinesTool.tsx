@@ -658,9 +658,9 @@ export const ActionPipelinesTool: React.FC = () => {
                   <a
                     href={resultP2.htmlDownloadUrl}
                     download={resultP2.htmlFilename}
-                    className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
-                  >
-                  NullNotifyMe
+                    >
+                    <Download className="w-4 h-4" />
+                    <span>自己復号HTMLファイルを保存</span>
                   </a>
                 </div>
               </div>

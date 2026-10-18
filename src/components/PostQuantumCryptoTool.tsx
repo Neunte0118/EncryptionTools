@@ -1,8 +1,6 @@
 import React, { useState, useRef } from 'react';
 import {
   generateMlKemKeyPair,
-  mlKemEncapsulate,
-  mlKemDecapsulate,
   encryptHybridMlKem,
   decryptHybridMlKem,
   generateMlDsaKeyPair,
@@ -11,15 +9,12 @@ import {
   MlKemLevel,
   MlDsaLevel,
   PqcEncryptedPackage,
-  hexToBytes,
 } from '../utils/postQuantumUtils';
 import {
   ShieldCheck,
   ShieldAlert,
   Lock,
   Unlock,
-  Key,
-  KeyRound,
   FileSignature,
   FileLock,
   Upload,
@@ -31,40 +26,52 @@ import {
   EyeOff,
   CheckCircle2,
   Cpu,
-  Sparkles,
-  Info,
-  Binary,
+  FileText,
+  AlertCircle,
 } from 'lucide-react';
 
 export const PostQuantumCryptoTool: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'ml-kem' | 'ml-dsa'>('ml-kem');
 
-  // -------------------------------------------------------------
-  // ML-KEM (Kyber) State
-  // -------------------------------------------------------------
+  // ML-KEM State
   const [kemLevel, setKemLevel] = useState<MlKemLevel>('768');
   const [kemMyPubKeyHex, setKemMyPubKeyHex] = useState('');
   const [kemMySecKeyHex, setKemMySecKeyHex] = useState('');
   const [isKemSecRevealed, setIsKemSecRevealed] = useState(false);
 
-  // KEM Encrypt / Decrypt State
+  // KEM Unified Action and Target
   const [kemAction, setKemAction] = useState<'encrypt' | 'decrypt'>('encrypt');
+  const [kemTargetType, setKemTargetType] = useState<'text' | 'file'>('text');
+
+  // Text State
   const [kemPeerPubKeyHex, setKemPeerPubKeyHex] = useState('');
   const [kemPlainText, setKemPlainText] = useState('');
   const [kemEncryptedPkgJson, setKemEncryptedPkgJson] = useState('');
   const [kemDecryptedText, setKemDecryptedText] = useState('');
+
+  // File State
+  const [selectedFile, setSelectedFile] = useState<{
+    name: string;
+    size: number;
+    buffer: ArrayBuffer;
+  } | null>(null);
+  const [fileSuccess, setFileSuccess] = useState<{
+    filename: string;
+    size: number;
+    downloadUrl: string;
+  } | null>(null);
+  const kemFileInputRef = useRef<HTMLInputElement>(null);
+
   const [kemError, setKemError] = useState('');
   const [isProcessingKem, setIsProcessingKem] = useState(false);
 
-  // -------------------------------------------------------------
-  // ML-DSA (Dilithium) State
-  // -------------------------------------------------------------
+  // ML-DSA State
   const [dsaLevel, setDsaLevel] = useState<MlDsaLevel>('65');
   const [dsaPubKeyHex, setDsaPubKeyHex] = useState('');
   const [dsaSecKeyHex, setDsaSecKeyHex] = useState('');
   const [isDsaSecRevealed, setIsDsaSecRevealed] = useState(false);
 
-  // DSA Sign / Verify State
+  // DSA Sign / Verify
   const [dsaAction, setDsaAction] = useState<'sign' | 'verify'>('sign');
   const [dsaMessage, setDsaMessage] = useState('');
   const [dsaSignatureHex, setDsaSignatureHex] = useState('');
@@ -91,13 +98,13 @@ export const PostQuantumCryptoTool: React.FC = () => {
     }
   };
 
-  // ML-KEM Encrypt
-  const handleKemEncrypt = async () => {
+  // ML-KEM Text Encrypt
+  const handleKemTextEncrypt = async () => {
     setKemError('');
     setKemEncryptedPkgJson('');
     const recipientKey = kemPeerPubKeyHex.trim() || kemMyPubKeyHex.trim();
     if (!recipientKey) {
-      setKemError('受取人のML-KEM公開鍵 (Hex) を入力するか、自身の鍵を生成してください');
+      setKemError('受取人のML-KEM公開鍵 Hex を入力するか鍵ペアを生成してください');
       return;
     }
     if (!kemPlainText.trim()) {
@@ -112,22 +119,22 @@ export const PostQuantumCryptoTool: React.FC = () => {
       const pkg = await encryptHybridMlKem(plainBytes, recipientKey, kemLevel);
       setKemEncryptedPkgJson(JSON.stringify(pkg, null, 2));
     } catch (e: any) {
-      setKemError(`ML-KEM 暗号化エラー: ${e.message}`);
+      setKemError(`暗号化エラー: ${e.message}`);
     } finally {
       setIsProcessingKem(false);
     }
   };
 
-  // ML-KEM Decrypt
-  const handleKemDecrypt = async () => {
+  // ML-KEM Text Decrypt
+  const handleKemTextDecrypt = async () => {
     setKemError('');
     setKemDecryptedText('');
     if (!kemMySecKeyHex.trim()) {
-      setKemError('復号に使用するML-KEM秘密鍵 (Hex) を指定してください');
+      setKemError('復号に使用するML-KEM秘密鍵 Hex を指定してください');
       return;
     }
     if (!kemEncryptedPkgJson.trim()) {
-      setKemError('暗号化パッケージ (JSON) を入力してください');
+      setKemError('暗号化パッケージ JSON を入力してください');
       return;
     }
 
@@ -138,7 +145,78 @@ export const PostQuantumCryptoTool: React.FC = () => {
       const decoder = new TextDecoder();
       setKemDecryptedText(decoder.decode(decryptedBytes));
     } catch (e: any) {
-      setKemError(`ML-KEM 復号エラー: ${e.message} (秘密鍵が一致しないか暗号データが破損しています)`);
+      setKemError(`復号エラー: ${e.message}`);
+    } finally {
+      setIsProcessingKem(false);
+    }
+  };
+
+  // ML-KEM File Change
+  const handleKemFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setSelectedFile({
+        name: file.name,
+        size: file.size,
+        buffer: event.target?.result as ArrayBuffer,
+      });
+      setKemError('');
+      setFileSuccess(null);
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // ML-KEM File Action
+  const handleKemFileAction = async () => {
+    setKemError('');
+    setFileSuccess(null);
+
+    if (!selectedFile) {
+      setKemError('ファイルを選択してください');
+      return;
+    }
+
+    setIsProcessingKem(true);
+    try {
+      if (kemAction === 'encrypt') {
+        const recipientKey = kemPeerPubKeyHex.trim() || kemMyPubKeyHex.trim();
+        if (!recipientKey) {
+          throw new Error('受取人のML-KEM公開鍵 Hex を入力するか鍵ペアを生成してください');
+        }
+        const fileBytes = new Uint8Array(selectedFile.buffer);
+        const pkg = await encryptHybridMlKem(fileBytes, recipientKey, kemLevel, {
+          filename: selectedFile.name,
+          mimeType: 'application/octet-stream',
+        });
+        const jsonStr = JSON.stringify(pkg, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const downloadUrl = URL.createObjectURL(blob);
+        setFileSuccess({
+          filename: `${selectedFile.name}.pqc.json`,
+          size: blob.size,
+          downloadUrl,
+        });
+      } else {
+        if (!kemMySecKeyHex.trim()) {
+          throw new Error('復号に使用するML-KEM秘密鍵 Hex を入力してください');
+        }
+        const textDecoder = new TextDecoder('utf-8');
+        const jsonStr = textDecoder.decode(selectedFile.buffer);
+        const pkg: PqcEncryptedPackage = JSON.parse(jsonStr);
+        const decryptedBytes = await decryptHybridMlKem(pkg, kemMySecKeyHex.trim());
+        const originalName = pkg.filename || 'decrypted.bin';
+        const blob = new Blob([decryptedBytes as any], { type: pkg.mimeType || 'application/octet-stream' });
+        const downloadUrl = URL.createObjectURL(blob);
+        setFileSuccess({
+          filename: originalName,
+          size: decryptedBytes.byteLength,
+          downloadUrl,
+        });
+      }
+    } catch (e: any) {
+      setKemError(`ファイル処理エラー: ${e.message}`);
     } finally {
       setIsProcessingKem(false);
     }
@@ -161,7 +239,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
     setDsaError('');
     setDsaSignatureHex('');
     if (!dsaSecKeyHex.trim()) {
-      setDsaError('署名に使用するML-DSA秘密鍵 (Hex) を指定してください');
+      setDsaError('署名に使用するML-DSA秘密鍵 Hex を指定してください');
       return;
     }
     if (!dsaMessage.trim()) {
@@ -175,7 +253,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
       const res = mlDsaSign(msgBytes, dsaSecKeyHex.trim(), dsaLevel);
       setDsaSignatureHex(res.signatureHex);
     } catch (e: any) {
-      setDsaError(`ML-DSA 署名作成エラー: ${e.message}`);
+      setDsaError(`署名作成エラー: ${e.message}`);
     }
   };
 
@@ -184,7 +262,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
     setDsaError('');
     setDsaVerifyResult(null);
     if (!dsaPubKeyHex.trim()) {
-      setDsaError('検証に使用するML-DSA公開鍵 (Hex) を指定してください');
+      setDsaError('検証に使用するML-DSA公開鍵 Hex を指定してください');
       return;
     }
     if (!dsaSignatureHex.trim()) {
@@ -216,14 +294,11 @@ export const PostQuantumCryptoTool: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">耐量子暗号 (ML-KEM / ML-DSA)</h2>
+              <h2 className="text-lg font-bold text-slate-100">耐量子暗号 ML-KEM ML-DSA</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-teal-950/80 text-teal-300 border border-teal-800/60 font-mono font-medium">
-                NIST FIPS 203 / 204 PQC
+                NIST FIPS 203 204
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              ショアのアルゴリズムを実装した将来の量子コンピュータに対しても解読不可能な格子暗号標準（ML-KEM / Kyber &amp; ML-DSA / Dilithium）
-            </p>
           </div>
         </div>
 
@@ -239,7 +314,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
-            <span>ML-KEM 格子暗号化 (Kyber)</span>
+            <span>ML-KEM 格子暗号化</span>
           </button>
           <button
             type="button"
@@ -251,39 +326,27 @@ export const PostQuantumCryptoTool: React.FC = () => {
             }`}
           >
             <FileSignature className="w-3.5 h-3.5" />
-            <span>ML-DSA 格子署名 (Dilithium)</span>
+            <span>ML-DSA 格子署名</span>
           </button>
         </div>
       </div>
 
-      {/* Info Banner */}
-      <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 text-xs space-y-1.5">
-        <div className="flex items-center gap-2 text-teal-300 font-semibold">
-          <Info className="w-4 h-4 text-teal-400" />
-          <span>耐量子暗号 (Post-Quantum Cryptography: PQC) について</span>
-        </div>
-        <p className="text-slate-400 text-[11px] leading-relaxed">
-          RSAや楕円曲線暗号（ECDSA/ECDH）は、量子コンピュータが実用化されると素因数分解・離散対数問題の脆弱性により瞬時に解読されるリスクがあります。
-          米国国立標準技術研究所（NIST）が正式採択した<strong>FIPS 203 (ML-KEM / 旧称 Crystals-Kyber)</strong> および <strong>FIPS 204 (ML-DSA / 旧称 Crystals-Dilithium)</strong> は、多次元格子上の最短ベクトル問題（LWE）の計算困難性に基づき、量子時代においても完全な安全性を保証します。
-        </p>
-      </div>
-
-      {/* ML-KEM Tab */}
+      {/* ML-KEM TAB */}
       {activeTab === 'ml-kem' && (
         <div className="space-y-6">
-          {/* Level & Keygen Section */}
+          {/* Key Generation Section */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-200">ML-KEM パラメータ強度:</span>
+                <span className="text-xs font-semibold text-slate-200">パラメータ強度:</span>
                 <select
                   value={kemLevel}
                   onChange={(e) => setKemLevel(e.target.value as any)}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-teal-300 font-mono text-xs focus:outline-none focus:border-teal-500"
                 >
-                  <option value="512">ML-KEM-512 (NIST Category 1 / AES-128同等)</option>
-                  <option value="768">ML-KEM-768 (NIST Category 3 / 推奨・標準)</option>
-                  <option value="1024">ML-KEM-1024 (NIST Category 5 / AES-256同等)</option>
+                  <option value="512">ML-KEM-512 高速</option>
+                  <option value="768">ML-KEM-768 標準推奨</option>
+                  <option value="1024">ML-KEM-1024 最高強度</option>
                 </select>
               </div>
               <button
@@ -292,7 +355,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                 className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>格子鍵ペアを新規生成</span>
+                <span>格子鍵ペアを生成</span>
               </button>
             </div>
 
@@ -300,7 +363,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-teal-300">ML-KEM 公開鍵 (Hex / 相手へ共有)</span>
+                    <span className="font-semibold text-teal-300">公開鍵 Hex</span>
                     <button
                       type="button"
                       onClick={() => handleCopy(kemMyPubKeyHex, 'kemPub')}
@@ -318,7 +381,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                 <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-rose-300">ML-KEM 秘密鍵 (Hex - 厳重保管)</span>
+                      <span className="font-semibold text-rose-300">秘密鍵 Hex</span>
                       <button
                         type="button"
                         onClick={() => setIsKemSecRevealed(!isKemSecRevealed)}
@@ -337,9 +400,11 @@ export const PostQuantumCryptoTool: React.FC = () => {
                       <span>コピー</span>
                     </button>
                   </div>
-                  <div className={`p-2 bg-slate-900 rounded font-mono text-slate-300 text-[10px] break-all max-h-24 overflow-y-auto ${
-                    !isKemSecRevealed ? 'filter blur-[3px]' : ''
-                  }`}>
+                  <div
+                    className={`p-2 bg-slate-900 rounded font-mono text-slate-300 text-[10px] break-all max-h-24 overflow-y-auto ${
+                      !isKemSecRevealed ? 'filter blur-[3px]' : ''
+                    }`}
+                  >
                     {kemMySecKeyHex}
                   </div>
                 </div>
@@ -347,167 +412,337 @@ export const PostQuantumCryptoTool: React.FC = () => {
             )}
           </div>
 
-          {/* Action Tabs: Encrypt / Decrypt */}
-          <div className="flex border-b border-slate-800 gap-4">
-            <button
-              type="button"
-              onClick={() => setKemAction('encrypt')}
-              className={`pb-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
-                kemAction === 'encrypt'
-                  ? 'border-teal-500 text-teal-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Lock className="w-3.5 h-3.5" />
-              <span>受取人の公開鍵で暗号化</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setKemAction('decrypt')}
-              className={`pb-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
-                kemAction === 'decrypt'
-                  ? 'border-teal-500 text-teal-400'
-                  : 'border-transparent text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Unlock className="w-3.5 h-3.5" />
-              <span>自身の秘密鍵で復号</span>
-            </button>
+          {/* Unified Operation & Target Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
+            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setKemAction('encrypt');
+                  setKemError('');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  kemAction === 'encrypt'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Lock className="w-3.5 h-3.5" />
+                <span>暗号化</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setKemAction('decrypt');
+                  setKemError('');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  kemAction === 'decrypt'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <Unlock className="w-3.5 h-3.5" />
+                <span>復号</span>
+              </button>
+            </div>
+
+            <div className="flex items-center bg-slate-900 p-1 rounded-xl border border-slate-800 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => {
+                  setKemTargetType('text');
+                  setKemError('');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  kemTargetType === 'text'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>テキスト</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setKemTargetType('file');
+                  setKemError('');
+                }}
+                className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
+                  kemTargetType === 'file'
+                    ? 'bg-teal-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <FileLock className="w-3.5 h-3.5" />
+                <span>ファイル</span>
+              </button>
+            </div>
           </div>
 
-          {kemAction === 'encrypt' ? (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  受取人のML-KEM公開鍵 (Hex)
-                </label>
-                <textarea
-                  value={kemPeerPubKeyHex}
-                  onChange={(e) => setKemPeerPubKeyHex(e.target.value)}
-                  rows={3}
-                  placeholder="未入力の場合は上で生成した自身の公開鍵を使用..."
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
-                />
-              </div>
+          {/* Error Banner */}
+          {kemError && (
+            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/80 text-xs text-red-200 flex items-start gap-2.5">
+              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+              <div className="font-medium">{kemError}</div>
+            </div>
+          )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">暗号化する平文メッセージ</label>
-                <textarea
-                  value={kemPlainText}
-                  onChange={(e) => setKemPlainText(e.target.value)}
-                  rows={4}
-                  placeholder="暗号化するテキストを入力..."
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-teal-500"
-                />
-              </div>
-
-              {kemError && (
-                <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-lg text-rose-300 text-xs">
-                  {kemError}
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleKemEncrypt}
-                disabled={isProcessingKem || !kemPlainText.trim()}
-                className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
-              >
-                <Lock className="w-4 h-4" />
-                <span>耐量子暗号化を実行 (ML-KEM + AES-256-GCM)</span>
-              </button>
-
-              {kemEncryptedPkgJson && (
-                <div className="space-y-2 pt-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      暗号化完了 (ML-KEM カプセル化暗号文 + AES-256-GCM)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(kemEncryptedPkgJson, 'kemPkg')}
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 text-[11px] flex items-center gap-1"
-                    >
-                      {copiedId === 'kemPkg' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedId === 'kemPkg' ? 'コピー完了' : 'JSONをコピー'}</span>
-                    </button>
+          {/* TEXT MODE */}
+          {kemTargetType === 'text' && (
+            <div className="space-y-5">
+              {kemAction === 'encrypt' ? (
+                <>
+                  <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <label className="text-xs font-bold text-slate-300">
+                      受取人の公開鍵 Hex
+                    </label>
+                    <textarea
+                      value={kemPeerPubKeyHex}
+                      onChange={(e) => setKemPeerPubKeyHex(e.target.value)}
+                      rows={2}
+                      placeholder="未入力の場合は上で生成した自身の公開鍵を使用"
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
+                    />
                   </div>
-                  <textarea
-                    readOnly
-                    value={kemEncryptedPkgJson}
-                    rows={6}
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-teal-300 text-xs font-mono"
-                  />
-                </div>
+
+                  <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <label className="text-xs font-bold text-slate-300">
+                      暗号化する平文
+                    </label>
+                    <textarea
+                      value={kemPlainText}
+                      onChange={(e) => setKemPlainText(e.target.value)}
+                      rows={4}
+                      placeholder="テキストを入力"
+                      className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-teal-500 font-mono"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleKemTextEncrypt}
+                    disabled={isProcessingKem || !kemPlainText.trim()}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Lock className="w-4 h-4" />
+                    <span>暗号化を実行</span>
+                  </button>
+
+                  {kemEncryptedPkgJson && (
+                    <div className="bg-slate-900/70 border border-teal-900/50 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-teal-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-teal-400" />
+                          暗号化パッケージ JSON
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(kemEncryptedPkgJson, 'kemPkg')}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1"
+                        >
+                          {copiedId === 'kemPkg' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>コピー済み</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>コピー</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <textarea
+                        readOnly
+                        value={kemEncryptedPkgJson}
+                        rows={6}
+                        className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-teal-300 text-xs font-mono select-all focus:outline-none"
+                      />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <label className="text-xs font-bold text-slate-300">
+                      復号用の秘密鍵 Hex
+                    </label>
+                    <textarea
+                      value={kemMySecKeyHex}
+                      onChange={(e) => setKemMySecKeyHex(e.target.value)}
+                      rows={2}
+                      placeholder="秘密鍵のHexを入力"
+                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <label className="text-xs font-bold text-slate-300">
+                      暗号化パッケージ JSON
+                    </label>
+                    <textarea
+                      value={kemEncryptedPkgJson}
+                      onChange={(e) => setKemEncryptedPkgJson(e.target.value)}
+                      rows={5}
+                      placeholder="暗号化されたJSONを貼り付け"
+                      className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
+                    />
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleKemTextDecrypt}
+                    disabled={isProcessingKem || !kemMySecKeyHex.trim() || !kemEncryptedPkgJson.trim()}
+                    className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
+                  >
+                    <Unlock className="w-4 h-4" />
+                    <span>復号を実行</span>
+                  </button>
+
+                  {kemDecryptedText && (
+                    <div className="bg-slate-900/70 border border-teal-900/50 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-teal-400 flex items-center gap-1.5">
+                          <CheckCircle2 className="w-4 h-4 text-teal-400" />
+                          復号テキスト
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleCopy(kemDecryptedText, 'kemDec')}
+                          className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1"
+                        >
+                          {copiedId === 'kemDec' ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>コピー済み</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              <span>コピー</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                      <textarea
+                        readOnly
+                        value={kemDecryptedText}
+                        rows={4}
+                        className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono select-all focus:outline-none"
+                      />
+                    </div>
+                  )}
+                </>
               )}
             </div>
-          ) : (
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  復号用のML-KEM秘密鍵 (Hex)
-                </label>
-                <textarea
-                  value={kemMySecKeyHex}
-                  onChange={(e) => setKemMySecKeyHex(e.target.value)}
-                  rows={3}
-                  placeholder="秘密鍵のHexを入力..."
-                  className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
-                />
-              </div>
+          )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  暗号化パッケージ (JSON)
-                </label>
-                <textarea
-                  value={kemEncryptedPkgJson}
-                  onChange={(e) => setKemEncryptedPkgJson(e.target.value)}
-                  rows={5}
-                  placeholder="受取った暗号化JSONを貼り付け..."
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
-                />
-              </div>
-
-              {kemError && (
-                <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-lg text-rose-300 text-xs">
-                  {kemError}
+          {/* FILE MODE */}
+          {kemTargetType === 'file' && (
+            <div className="space-y-5">
+              {kemAction === 'encrypt' ? (
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                  <label className="text-xs font-bold text-slate-300">
+                    受取人の公開鍵 Hex
+                  </label>
+                  <textarea
+                    value={kemPeerPubKeyHex}
+                    onChange={(e) => setKemPeerPubKeyHex(e.target.value)}
+                    rows={2}
+                    placeholder="未入力の場合は上で生成した自身の公開鍵を使用"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
+                  />
+                </div>
+              ) : (
+                <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                  <label className="text-xs font-bold text-slate-300">
+                    復号用の秘密鍵 Hex
+                  </label>
+                  <textarea
+                    value={kemMySecKeyHex}
+                    onChange={(e) => setKemMySecKeyHex(e.target.value)}
+                    rows={2}
+                    placeholder="復号用秘密鍵のHexを入力"
+                    className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
+                  />
                 </div>
               )}
 
+              {/* File Dropzone */}
+              <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <label className="text-xs font-bold text-slate-300">
+                  {kemAction === 'encrypt' ? '暗号化するファイル' : '復号する暗号化ファイル'}
+                </label>
+                <input
+                  ref={kemFileInputRef}
+                  type="file"
+                  onChange={handleKemFileChange}
+                  className="hidden"
+                />
+                <div
+                  onClick={() => kemFileInputRef.current?.click()}
+                  className="border-2 border-dashed border-slate-800 hover:border-teal-500/50 bg-slate-950/60 rounded-xl p-6 text-center cursor-pointer transition-colors"
+                >
+                  <Upload className="w-7 h-7 text-slate-500 mx-auto mb-2" />
+                  {selectedFile ? (
+                    <div>
+                      <div className="text-xs font-bold text-slate-200">{selectedFile.name}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">
+                        {selectedFile.size.toLocaleString()} bytes
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div className="text-xs text-slate-300 font-medium">クリックしてファイルを選択</div>
+                      <div className="text-[11px] text-slate-500 mt-1">任意のファイル形式に対応</div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <button
                 type="button"
-                onClick={handleKemDecrypt}
-                disabled={isProcessingKem || !kemMySecKeyHex.trim() || !kemEncryptedPkgJson.trim()}
-                className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+                disabled={isProcessingKem || !selectedFile}
+                onClick={handleKemFileAction}
+                className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-teal-600 hover:bg-teal-500 text-white shadow-lg shadow-teal-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
               >
-                <Unlock className="w-4 h-4" />
-                <span>ML-KEM 秘密鍵でデカプセル化 &amp; 復号</span>
+                {kemAction === 'encrypt' ? (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>ファイルを暗号化</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock className="w-4 h-4" />
+                    <span>ファイルを復号</span>
+                  </>
+                )}
               </button>
 
-              {kemDecryptedText && (
-                <div className="space-y-2 pt-2">
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      復号完了 (認証付き平文復元OK)
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(kemDecryptedText, 'kemDec')}
-                      className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 text-[11px] flex items-center gap-1"
-                    >
-                      {copiedId === 'kemDec' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedId === 'kemDec' ? 'コピー完了' : 'コピー'}</span>
-                    </button>
+              {/* File Result */}
+              {fileSuccess && (
+                <div className="bg-teal-950/20 border border-teal-800/80 rounded-xl p-4 space-y-3">
+                  <div className="flex items-center gap-2 text-teal-400 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{kemAction === 'encrypt' ? 'ファイル暗号化完了' : 'ファイル復号完了'}</span>
                   </div>
-                  <textarea
-                    readOnly
-                    value={kemDecryptedText}
-                    rows={4}
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-sans"
-                  />
+                  <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+                    <div>
+                      <div className="text-xs font-mono font-bold text-slate-200">{fileSuccess.filename}</div>
+                      <div className="text-[11px] text-slate-500 mt-0.5">{fileSuccess.size.toLocaleString()} bytes</div>
+                    </div>
+                    <a
+                      href={fileSuccess.downloadUrl}
+                      download={fileSuccess.filename}
+                      className="px-4 py-2 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>ダウンロード</span>
+                    </a>
+                  </div>
                 </div>
               )}
             </div>
@@ -515,22 +750,22 @@ export const PostQuantumCryptoTool: React.FC = () => {
         </div>
       )}
 
-      {/* ML-DSA Tab */}
+      {/* ML-DSA TAB */}
       {activeTab === 'ml-dsa' && (
         <div className="space-y-6">
-          {/* Level & Keygen Section */}
+          {/* Keygen Section */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-slate-200">ML-DSA パラメータ強度:</span>
+                <span className="text-xs font-semibold text-slate-200">パラメータ強度:</span>
                 <select
                   value={dsaLevel}
                   onChange={(e) => setDsaLevel(e.target.value as any)}
                   className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-teal-300 font-mono text-xs focus:outline-none focus:border-teal-500"
                 >
-                  <option value="44">ML-DSA-44 (NIST Category 2 / 高速)</option>
-                  <option value="65">ML-DSA-65 (NIST Category 3 / 推奨・標準)</option>
-                  <option value="87">ML-DSA-87 (NIST Category 5 / 最高強度)</option>
+                  <option value="44">ML-DSA-44 高速</option>
+                  <option value="65">ML-DSA-65 標準推奨</option>
+                  <option value="87">ML-DSA-87 最高強度</option>
                 </select>
               </div>
               <button
@@ -539,7 +774,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                 className="px-3.5 py-1.5 rounded-lg bg-teal-600 hover:bg-teal-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>格子署名鍵ペアを新規生成</span>
+                <span>格子署名鍵ペアを生成</span>
               </button>
             </div>
 
@@ -547,7 +782,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="font-semibold text-teal-300">ML-DSA 検証用公開鍵 (Hex)</span>
+                    <span className="font-semibold text-teal-300">検証用公開鍵 Hex</span>
                     <button
                       type="button"
                       onClick={() => handleCopy(dsaPubKeyHex, 'dsaPub')}
@@ -565,7 +800,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                 <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1.5">
                   <div className="flex items-center justify-between text-[11px]">
                     <div className="flex items-center gap-2">
-                      <span className="font-semibold text-rose-300">ML-DSA 署名用秘密鍵 (Hex)</span>
+                      <span className="font-semibold text-rose-300">署名用秘密鍵 Hex</span>
                       <button
                         type="button"
                         onClick={() => setIsDsaSecRevealed(!isDsaSecRevealed)}
@@ -584,9 +819,11 @@ export const PostQuantumCryptoTool: React.FC = () => {
                       <span>コピー</span>
                     </button>
                   </div>
-                  <div className={`p-2 bg-slate-900 rounded font-mono text-slate-300 text-[10px] break-all max-h-24 overflow-y-auto ${
-                    !isDsaSecRevealed ? 'filter blur-[3px]' : ''
-                  }`}>
+                  <div
+                    className={`p-2 bg-slate-900 rounded font-mono text-slate-300 text-[10px] break-all max-h-24 overflow-y-auto ${
+                      !isDsaSecRevealed ? 'filter blur-[3px]' : ''
+                    }`}
+                  >
                     {dsaSecKeyHex}
                   </div>
                 </div>
@@ -601,6 +838,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
               onClick={() => {
                 setDsaAction('sign');
                 setDsaVerifyResult(null);
+                setDsaError('');
               }}
               className={`pb-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
                 dsaAction === 'sign'
@@ -609,13 +847,14 @@ export const PostQuantumCryptoTool: React.FC = () => {
               }`}
             >
               <FileSignature className="w-3.5 h-3.5" />
-              <span>電子署名を作成 (Sign)</span>
+              <span>電子署名を作成</span>
             </button>
             <button
               type="button"
               onClick={() => {
                 setDsaAction('verify');
                 setDsaVerifyResult(null);
+                setDsaError('');
               }}
               className={`pb-2 text-xs font-bold transition-colors border-b-2 flex items-center gap-1.5 ${
                 dsaAction === 'verify'
@@ -624,7 +863,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              <span>電子署名を検証 (Verify)</span>
+              <span>電子署名を検証</span>
             </button>
           </div>
 
@@ -635,8 +874,8 @@ export const PostQuantumCryptoTool: React.FC = () => {
                 value={dsaMessage}
                 onChange={(e) => setDsaMessage(e.target.value)}
                 rows={3}
-                placeholder="署名または改竄検証するメッセージを入力..."
-                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-teal-500"
+                placeholder="メッセージを入力"
+                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-teal-500 font-mono"
               />
             </div>
 
@@ -644,13 +883,13 @@ export const PostQuantumCryptoTool: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    ML-DSA 秘密鍵 (Hex)
+                    署名用秘密鍵 Hex
                   </label>
                   <textarea
                     value={dsaSecKeyHex}
                     onChange={(e) => setDsaSecKeyHex(e.target.value)}
-                    rows={3}
-                    placeholder="署名用秘密鍵のHex..."
+                    rows={2}
+                    placeholder="秘密鍵のHexを入力"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
                   />
                 </div>
@@ -668,7 +907,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                   className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
                 >
                   <FileSignature className="w-4 h-4" />
-                  <span>ML-DSA 格子署名を生成</span>
+                  <span>電子署名を生成</span>
                 </button>
 
                 {dsaSignatureHex && (
@@ -676,7 +915,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5" />
-                        署名生成完了 (Dilithium FIPS 204)
+                        署名生成完了
                       </span>
                       <button
                         type="button"
@@ -684,7 +923,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-teal-300 text-[11px] flex items-center gap-1"
                       >
                         {copiedId === 'dsaSig' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                        <span>{copiedId === 'dsaSig' ? 'コピー完了' : '署名をコピー'}</span>
+                        <span>署名をコピー</span>
                       </button>
                     </div>
                     <textarea
@@ -700,26 +939,26 @@ export const PostQuantumCryptoTool: React.FC = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    ML-DSA 公開鍵 (Hex)
+                    検証用公開鍵 Hex
                   </label>
                   <textarea
                     value={dsaPubKeyHex}
                     onChange={(e) => setDsaPubKeyHex(e.target.value)}
-                    rows={3}
-                    placeholder="検証用公開鍵のHex..."
+                    rows={2}
+                    placeholder="公開鍵のHexを入力"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-300 mb-1">
-                    検証する署名 (Hex)
+                    検証する署名 Hex
                   </label>
                   <textarea
                     value={dsaSignatureHex}
                     onChange={(e) => setDsaSignatureHex(e.target.value)}
-                    rows={4}
-                    placeholder="署名Hexを貼り付け..."
+                    rows={3}
+                    placeholder="署名Hexを貼り付け"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
                   />
                 </div>
@@ -737,7 +976,7 @@ export const PostQuantumCryptoTool: React.FC = () => {
                   className="w-full py-2.5 rounded-lg bg-teal-600 hover:bg-teal-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
                 >
                   <ShieldCheck className="w-4 h-4" />
-                  <span>ML-DSA 署名の真正性を検証</span>
+                  <span>署名を検証</span>
                 </button>
 
                 {dsaVerifyResult !== null && (
@@ -752,9 +991,9 @@ export const PostQuantumCryptoTool: React.FC = () => {
                       <>
                         <ShieldCheck className="w-6 h-6 text-emerald-400 shrink-0" />
                         <div>
-                          <div className="font-bold text-sm">署名検証: 正当 (Valid Signature)</div>
+                          <div className="font-bold text-sm">署名検証 真正</div>
                           <div className="text-[11px] text-emerald-400/80">
-                            メッセージは改竄されておらず、対応するML-DSA公開鍵所持者によって正当に署名されたことが数学的に証明されました。
+                            メッセージは改ざんされておらず公開鍵に対応する署名者によって正当に作成されました。
                           </div>
                         </div>
                       </>
@@ -762,9 +1001,9 @@ export const PostQuantumCryptoTool: React.FC = () => {
                       <>
                         <ShieldAlert className="w-6 h-6 text-rose-400 shrink-0" />
                         <div>
-                          <div className="font-bold text-sm">署名検証: 不正 (Invalid Signature)</div>
+                          <div className="font-bold text-sm">署名検証 不正</div>
                           <div className="text-[11px] text-rose-400/80">
-                            署名が不正であるか、メッセージまたは公開鍵が一致していません。
+                            署名が一致しないかデータが破損または改ざんされています。
                           </div>
                         </div>
                       </>

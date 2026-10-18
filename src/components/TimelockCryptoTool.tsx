@@ -267,7 +267,7 @@ export const TimelockCryptoTool: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Top Header Card */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 space-y-4">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-indigo-950/80 text-indigo-400 border border-indigo-800/80 flex items-center justify-center shrink-0">
@@ -276,15 +276,12 @@ export const TimelockCryptoTool: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-100">
-                  drand タイムロック暗号・復号 (tlock)
+                  drand タイムロック暗号
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono bg-indigo-950/80 border border-indigo-700/80 text-indigo-300">
                   Quicknet 3秒
                 </span>
               </div>
-              <p className="text-xs text-slate-400 mt-0.5">
-                分散型ランダムビーコン「drand」の閾値署名を用い、**指定した未来の時刻が訪れるまで全世界の誰も解錠できない**時限暗号です。
-              </p>
             </div>
           </div>
 
@@ -312,13 +309,6 @@ export const TimelockCryptoTool: React.FC = () => {
             </div>
           </div>
         </div>
-
-        <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800/80 text-xs text-slate-300 leading-relaxed flex items-start gap-2">
-          <ShieldAlert className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
-          <span>
-            <strong>理論的安全保証:</strong> 秘密鍵は送信者自身も含め存在しません。未来の指定ラウンドに到達した瞬間に、世界中に分散配置されたdrandノード群が閾値BLS署名を公表して初めて、数学的に復号鍵が導出されます。
-          </span>
-        </div>
       </div>
 
       {/* Main Tabs */}
@@ -333,7 +323,7 @@ export const TimelockCryptoTool: React.FC = () => {
           }`}
         >
           <Lock className="w-4 h-4" />
-          <span>タイムロック暗号化 (封印)</span>
+          <span>タイムロック暗号化</span>
         </button>
 
         <button
@@ -346,7 +336,7 @@ export const TimelockCryptoTool: React.FC = () => {
           }`}
         >
           <Unlock className="w-4 h-4" />
-          <span>タイムロック復号 (解錠)</span>
+          <span>タイムロック復号</span>
         </button>
       </div>
 
@@ -358,7 +348,7 @@ export const TimelockCryptoTool: React.FC = () => {
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-indigo-400" />
-                <span>解錠時刻 (タイムロック設定)</span>
+                <span>解錠時刻</span>
               </h3>
 
               <div className="flex rounded-lg bg-slate-950 p-1 border border-slate-800">
@@ -462,7 +452,7 @@ export const TimelockCryptoTool: React.FC = () => {
             ) : (
               <div className="space-y-2">
                 <label className="block text-xs font-medium text-slate-300">
-                  解錠日時 (ローカル時刻):
+                  解錠日時:
                 </label>
                 <input
                   type="datetime-local"
@@ -611,7 +601,7 @@ export const TimelockCryptoTool: React.FC = () => {
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>暗号化出力 (AGE / tlock フォーマット)</span>
+                <span>暗号化出力 AGE tlock</span>
               </h3>
 
               {encryptionResult ? (
@@ -664,13 +654,6 @@ export const TimelockCryptoTool: React.FC = () => {
                 </div>
               )}
             </div>
-
-            <div className="p-3 bg-slate-950/80 rounded-lg border border-slate-800/80 text-[11px] text-slate-400 space-y-1">
-              <div className="font-semibold text-slate-300">💡 共有と解錠:</div>
-              <p>
-                この暗号文はメール、チャット、公開掲示板等で誰に渡しても安全です。指定時刻になるまではいかなるスーパーコンピュータでも解読できません。
-              </p>
-            </div>
           </div>
         </div>
       )}
@@ -682,7 +665,7 @@ export const TimelockCryptoTool: React.FC = () => {
           <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
               <Unlock className="w-4 h-4 text-indigo-400" />
-              <span>暗号文の入力 (AGE / tlock 形式)</span>
+              <span>暗号文の入力</span>
             </h3>
 
             {/* File drop or text paste */}
@@ -861,7 +844,7 @@ export const TimelockCryptoTool: React.FC = () => {
                   ) : (
                     <div className="space-y-2">
                       <p className="text-xs text-slate-400">
-                        バイナリファイル（{(decryptResult.buffer.byteLength / 1024).toFixed(1)} KB）が正常に復号されました。
+                        バイナリファイル {(decryptResult.buffer.byteLength / 1024).toFixed(1)} KB が正常に復号されました。
                       </p>
                       {decryptResult.downloadUrl && (
                         <a
@@ -879,16 +862,9 @@ export const TimelockCryptoTool: React.FC = () => {
               ) : (
                 <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-xl space-y-2">
                   <Hourglass className="w-10 h-10 mx-auto text-slate-600 opacity-60" />
-                  <div className="text-xs">左の入力欄に暗号文を貼り付けて「復号」を押してください</div>
+                  <div className="text-xs">左の入力欄に暗号文を貼り付けて復号を押してください</div>
                 </div>
               )}
-            </div>
-
-            <div className="p-3 rounded-lg bg-indigo-950/30 border border-indigo-900/50 text-[11px] text-indigo-300 flex items-start gap-2">
-              <Radio className="w-4 h-4 shrink-0 mt-0.5 text-indigo-400" />
-              <span>
-                復号時には drand の公開分散ノード（HTTP API）から該当ラウンドの確定ランダム値（BLS署名）を取得し、クライアント側の pairing 演算で瞬時に解錠します。
-              </span>
             </div>
           </div>
         </div>

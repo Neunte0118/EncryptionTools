@@ -417,9 +417,6 @@ export const FheTool: React.FC = () => {
                 Paillier 準同型暗号系
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              暗号化したまま外部サーバーで合算演算を実行し、暗号化ファイル保存・集計・復号レポートを出力
-            </p>
           </div>
         </div>
 

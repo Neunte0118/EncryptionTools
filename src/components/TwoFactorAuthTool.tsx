@@ -335,7 +335,7 @@ export const TwoFactorAuthTool: React.FC = () => {
           setActiveTab('authenticator');
         }
       } catch (err) {
-        alert('JSONファイルの読み込みに失敗しました');
+        console.error('JSON parse error');
       }
     };
     reader.readAsText(file);
@@ -345,7 +345,7 @@ export const TwoFactorAuthTool: React.FC = () => {
   return (
     <div className="space-y-6">
       {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-sm">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2">
@@ -356,9 +356,6 @@ export const TwoFactorAuthTool: React.FC = () => {
                 ローカル 2要素認証管理
               </h2>
             </div>
-            <p className="text-xs text-slate-400">
-              WebCrypto HMAC による完全ローカル動作。ワンタイムパスワード生成・登録・編集・検証・バックアップ
-            </p>
           </div>
 
           {/* Sub Navigation Tabs */}

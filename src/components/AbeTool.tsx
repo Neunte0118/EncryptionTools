@@ -210,7 +210,7 @@ export const AbeTool: React.FC = () => {
   const handleDownloadDecryptedFile = () => {
     if (!decryptedResult) return;
     if (decryptedResult.isBinary && decryptedResult.binaryData) {
-      const blob = new Blob([decryptedResult.binaryData], {
+      const blob = new Blob([decryptedResult.binaryData as any], {
         type: decryptedResult.fileType || 'application/octet-stream',
       });
       const url = URL.createObjectURL(blob);
@@ -315,9 +315,6 @@ export const AbeTool: React.FC = () => {
                 CP-ABE 暗号化ファイル対応
               </span>
             </div>
-            <p className="text-xs text-slate-400">
-              役職・所属などの属性論理式ポリシーで暗号化ファイルを作成し、合致する属性鍵所持者のみ復号
-            </p>
           </div>
         </div>
 

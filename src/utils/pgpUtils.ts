@@ -193,3 +193,89 @@ export async function getPgpKeyInfo(armoredKey: string): Promise<{
     throw new Error(`PGP鍵の解析に失敗しました: ${err.message}`);
   }
 }
+
+/**
+ * Encrypt a file using OpenPGP
+ */
+export async function encryptPgpFile(options: {
+  fileData: ArrayBuffer;
+  fileName: string;
+  publicKeyArmored?: string;
+  passphrase?: string;
+}): Promise<string> {
+  const nameBytes = new TextEncoder().encode(options.fileName);
+  const nameLen = nameBytes.length;
+  const rawBytes = new Uint8Array(options.fileData);
+  const payload = new Uint8Array(2 + nameLen + rawBytes.length);
+  payload[0] = (nameLen >> 8) & 0xff;
+  payload[1] = nameLen & 0xff;
+  payload.set(nameBytes, 2);
+  payload.set(rawBytes, 2 + nameLen);
+
+  const message = await openpgp.createMessage({ binary: payload });
+  let encryptionKeys: any[] = [];
+  if (options.publicKeyArmored && options.publicKeyArmored.trim()) {
+    const key = await openpgp.readKey({ armoredKey: options.publicKeyArmored.trim() });
+    encryptionKeys.push(key);
+  }
+
+  const armored = await openpgp.encrypt({
+    message,
+    encryptionKeys: encryptionKeys.length > 0 ? encryptionKeys : undefined,
+    passwords: options.passphrase ? [options.passphrase] : undefined,
+    format: 'armored',
+  });
+  return armored as string;
+}
+
+/**
+ * Decrypt an OpenPGP file
+ */
+export async function decryptPgpFile(options: {
+  armoredOrBinary: string | ArrayBuffer;
+  privateKeyArmored?: string;
+  passphrase?: string;
+}): Promise<{ fileName: string; fileData: ArrayBuffer }> {
+  let message;
+  if (typeof options.armoredOrBinary === 'string') {
+    message = await openpgp.readMessage({ armoredMessage: options.armoredOrBinary.trim() });
+  } else {
+    message = await openpgp.readMessage({ binaryMessage: new Uint8Array(options.armoredOrBinary) });
+  }
+
+  let decryptionKeys: any[] = [];
+  if (options.privateKeyArmored && options.privateKeyArmored.trim()) {
+    let privKey = await openpgp.readPrivateKey({ armoredKey: options.privateKeyArmored.trim() });
+    if (options.passphrase) {
+      privKey = await openpgp.decryptKey({ privateKey: privKey, passphrase: options.passphrase });
+    }
+    decryptionKeys.push(privKey);
+  }
+
+  const { data: decrypted } = await openpgp.decrypt({
+    message,
+    decryptionKeys: decryptionKeys.length > 0 ? decryptionKeys : undefined,
+    passwords: options.passphrase && decryptionKeys.length === 0 ? [options.passphrase] : undefined,
+    format: 'binary',
+  });
+
+  const bytes = decrypted as Uint8Array;
+  if (bytes.length >= 2) {
+    const nameLen = (bytes[0] << 8) | bytes[1];
+    if (bytes.length >= 2 + nameLen) {
+      const fileName = new TextDecoder('utf-8').decode(bytes.subarray(2, 2 + nameLen));
+      const fileData = bytes.subarray(2 + nameLen);
+      const outBuffer = fileData.buffer.slice(
+        fileData.byteOffset,
+        fileData.byteOffset + fileData.byteLength
+      ) as ArrayBuffer;
+      return { fileName, fileData: outBuffer };
+    }
+  }
+
+  const outBuffer = bytes.buffer.slice(
+    bytes.byteOffset,
+    bytes.byteOffset + bytes.byteLength
+  ) as ArrayBuffer;
+  return { fileName: 'decrypted.bin', fileData: outBuffer };
+}

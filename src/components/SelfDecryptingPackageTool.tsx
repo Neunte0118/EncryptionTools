@@ -154,7 +154,7 @@ export const SelfDecryptingPackageTool: React.FC = () => {
           )}
 
           <div>
-            <label className="block text-slate-300 font-medium mb-1">復号パスワード (必須)</label>
+            <label className="block text-slate-300 font-medium mb-1">復号パスワード 必須</label>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -176,22 +176,22 @@ export const SelfDecryptingPackageTool: React.FC = () => {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-400 mb-1">タイトル (任意)</label>
+              <label className="block text-slate-400 mb-1">タイトル 任意</label>
               <input
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="例: 機密文書"
+                placeholder="タイトル"
                 className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
               />
             </div>
             <div>
-              <label className="block text-slate-400 mb-1">ヒント (任意)</label>
+              <label className="block text-slate-400 mb-1">ヒント 任意</label>
               <input
                 type="text"
                 value={hint}
                 onChange={(e) => setHint(e.target.value)}
-                placeholder="例: 電話で伝えた合言葉"
+                placeholder="ヒント"
                 className="w-full px-2.5 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
               />
             </div>
@@ -227,9 +227,6 @@ export const SelfDecryptingPackageTool: React.FC = () => {
                     <Check className="w-4 h-4 text-emerald-400" />
                     <span>HTMLパッケージが生成されました</span>
                   </div>
-                  <div className="text-[11px] text-slate-400 mt-1">
-                    ブラウザで開くだけでオフラインでも解読可能です
-                  </div>
                 </div>
 
                 <button
@@ -260,10 +257,6 @@ export const SelfDecryptingPackageTool: React.FC = () => {
                 <div>フォームに入力して生成してください</div>
               </div>
             )}
-          </div>
-
-          <div className="text-[10px] text-slate-500 pt-3 border-t border-slate-800">
-            受取側に専用アプリは不要です。標準ブラウザのみで復号できます。
           </div>
         </div>
       </div>

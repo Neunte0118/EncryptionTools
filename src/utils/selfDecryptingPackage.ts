@@ -1,9 +1,6 @@
 /**
  * Self-Decrypting HTML Package Generator
- * 
- * Takes plaintext or binary files, encrypts with AES-256-GCM (PBKDF2 100,000 iterations),
- * and bundles an elegant, self-contained standalone HTML document that can be opened in ANY browser
- * completely offline with ZERO dependencies or external servers.
+ * Standalone offline HTML package
  */
 
 import { deriveKeyFromPassword, bufferToBase64 } from './cryptoUtils';
@@ -17,7 +14,7 @@ export interface SelfDecryptPackageOptions {
 }
 
 /**
- * Encrypt data and construct the complete standalone HTML string.
+ * Encrypt data and construct the barebones standalone HTML string.
  */
 export async function createSelfDecryptingHtml(
   data: ArrayBuffer | string,
@@ -27,7 +24,6 @@ export async function createSelfDecryptingHtml(
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
   const iv = window.crypto.getRandomValues(new Uint8Array(12));
 
-  // Prepare input buffer
   let plainBuffer: ArrayBuffer;
   if (typeof data === 'string') {
     plainBuffer = new TextEncoder().encode(data).buffer;
@@ -35,10 +31,8 @@ export async function createSelfDecryptingHtml(
     plainBuffer = data;
   }
 
-  // Derive AES-GCM 256-bit key from password
   const key = await deriveKeyFromPassword(password, salt);
 
-  // Encrypt with AES-GCM
   const ciphertextBuffer = await window.crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
     key,
@@ -50,7 +44,7 @@ export async function createSelfDecryptingHtml(
   const cipherB64 = bufferToBase64(ciphertextBuffer);
 
   const payloadMeta = {
-    title: options.title || '暗号化セキュアパッケージ',
+    title: options.title || '自己復号パッケージ',
     hint: options.hint || '',
     type: options.payloadType,
     filename: options.filename || (options.payloadType === 'text' ? 'secure-message.txt' : 'decrypted-file.dat'),
@@ -63,255 +57,114 @@ export async function createSelfDecryptingHtml(
 
   const jsonBundle = JSON.stringify(payloadMeta);
 
-  // Build clean, responsive, dependency-free HTML with embedded styles and Web Crypto decryption engine
+  // Stark, unadorned, barebones HTML with CSS almost completely removed
   return `<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${escapeHtml(payloadMeta.title)} - 自己復号パッケージ</title>
+  <title>${escapeHtml(payloadMeta.title)} - 自己復号</title>
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
-    *::-webkit-scrollbar { display: none; width: 0; height: 0; }
     body {
-      background: #020617;
-      color: #f8fafc;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 1.25rem;
-    }
-    .card {
-      width: 100%;
-      max-width: 32rem;
-      background: #0f172a;
-      border: 1px solid #1e293b;
-      border-radius: 1rem;
-      padding: 1.75rem;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    }
-    .badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 0.375rem;
-      padding: 0.25rem 0.625rem;
-      border-radius: 9999px;
-      font-size: 0.6875rem;
-      font-weight: 600;
-      background: rgba(99, 102, 241, 0.15);
-      border: 1px solid rgba(99, 102, 241, 0.3);
-      color: #a5b4fc;
-      margin-bottom: 0.75rem;
+      font-family: monospace;
+      max-width: 640px;
+      margin: 40px auto;
+      padding: 0 16px;
+      color: #000;
+      background: #fff;
+      line-height: 1.4;
     }
     h1 {
-      font-size: 1.25rem;
-      font-weight: 700;
-      color: #f1f5f9;
-      margin-bottom: 0.375rem;
+      font-size: 16px;
+      margin: 0 0 8px 0;
     }
-    .desc {
-      font-size: 0.8125rem;
-      color: #94a3b8;
-      line-height: 1.5;
-      margin-bottom: 1.5rem;
+    hr {
+      border: none;
+      border-top: 1px solid #000;
+      margin: 12px 0;
     }
-    .meta-box {
-      background: #090d16;
-      border: 1px solid #1e293b;
-      border-radius: 0.625rem;
-      padding: 0.875rem;
-      font-size: 0.75rem;
-      margin-bottom: 1.25rem;
-      color: #cbd5e1;
-    }
-    .meta-row {
-      display: flex;
-      justify-content: space-between;
-      margin-bottom: 0.375rem;
-    }
-    .meta-row:last-child { margin-bottom: 0; }
-    .meta-label { color: #64748b; }
-    .meta-value { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-    .field {
-      margin-bottom: 1rem;
-    }
-    label {
-      display: block;
-      font-size: 0.75rem;
-      font-weight: 600;
-      color: #cbd5e1;
-      margin-bottom: 0.375rem;
-    }
-    .input-wrap {
-      position: relative;
+    input, button, textarea {
+      font-family: inherit;
+      font-size: 13px;
+      color: #000;
+      background: #fff;
+      border: 1px solid #000;
+      box-sizing: border-box;
     }
     input[type="password"], input[type="text"] {
       width: 100%;
-      background: #020617;
-      border: 1px solid #334155;
-      border-radius: 0.5rem;
-      padding: 0.625rem 2.5rem 0.625rem 0.75rem;
-      color: #f8fafc;
-      font-size: 0.875rem;
-      outline: none;
-      transition: border-color 0.15s;
+      padding: 4px;
     }
-    input:focus {
-      border-color: #6366f1;
-    }
-    .toggle-btn {
-      position: absolute;
-      right: 0.5rem;
-      top: 50%;
-      transform: translateY(-50%);
-      background: none;
-      border: none;
-      color: #64748b;
+    button {
+      padding: 4px 12px;
       cursor: pointer;
-      font-size: 0.75rem;
-      padding: 0.25rem;
     }
-    .toggle-btn:hover { color: #cbd5e1; }
-    .btn {
+    button:disabled {
+      cursor: wait;
+      opacity: 0.6;
+    }
+    textarea {
       width: 100%;
-      padding: 0.75rem;
-      background: #4f46e5;
-      color: #ffffff;
-      border: none;
-      border-radius: 0.5rem;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      transition: background 0.15s, opacity 0.15s;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 0.5rem;
+      height: 180px;
+      padding: 4px;
     }
-    .btn:hover { background: #4338ca; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .btn-download {
-      background: #059669;
+    .meta-line {
+      margin-bottom: 4px;
     }
-    .btn-download:hover { background: #047857; }
-    .btn-copy {
-      background: #334155;
-      margin-top: 0.5rem;
+    .field {
+      margin-top: 12px;
     }
-    .btn-copy:hover { background: #475569; }
-    .error {
-      margin-top: 1rem;
-      padding: 0.75rem;
-      background: rgba(159, 18, 57, 0.4);
-      border: 1px solid #be123c;
-      border-radius: 0.5rem;
-      font-size: 0.75rem;
-      color: #fda4af;
+    .actions {
+      margin-top: 10px;
     }
-    .result-box {
-      margin-top: 1.25rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid #1e293b;
+    .error-msg {
+      color: #c00;
+      margin-top: 10px;
+      font-weight: bold;
     }
-    .text-content {
-      width: 100%;
-      min-height: 8rem;
-      max-height: 18rem;
-      overflow-y: auto;
-      background: #020617;
-      border: 1px solid #1e293b;
-      border-radius: 0.5rem;
-      padding: 0.75rem;
-      color: #f1f5f9;
-      font-size: 0.8125rem;
-      white-space: pre-wrap;
-      word-break: break-all;
-      margin-bottom: 0.75rem;
-      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-    }
-    .security-notice {
-      margin-top: 1.25rem;
-      padding: 0.75rem;
-      border-radius: 0.5rem;
-      background: rgba(6, 78, 59, 0.2);
-      border: 1px solid rgba(5, 150, 105, 0.3);
-      font-size: 0.6875rem;
-      color: #6ee7b7;
-      line-height: 1.4;
+    .res-section {
+      margin-top: 16px;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="badge">
-      <span>🔒 AES-256-GCM 自己復号パッケージ</span>
+  <h1>${escapeHtml(payloadMeta.title)}</h1>
+  <hr>
+  <div class="meta-line">形式: ${payloadMeta.type === 'text' ? 'テキスト' : 'ファイル'}</div>
+  ${payloadMeta.type === 'file' ? `<div class="meta-line">ファイル名: ${escapeHtml(payloadMeta.filename)}</div>` : ''}
+  ${payloadMeta.hint ? `<div class="meta-line">ヒント: ${escapeHtml(payloadMeta.hint)}</div>` : ''}
+
+  <form id="decryptForm" onsubmit="handleDecrypt(event)">
+    <div class="field">
+      <label for="pwd" style="display:block; margin-bottom: 4px;">パスワード</label>
+      <input type="password" id="pwd" autocomplete="current-password" autofocus required />
     </div>
-    <h1>${escapeHtml(payloadMeta.title)}</h1>
-    <p class="desc">
-      このファイルはブラウザのWeb Crypto API（PBKDF2-SHA256 / AES-GCM）によって暗号化されています。サーバー通信なしでローカル復号されます。
-    </p>
-
-    <div class="meta-box">
-      <div class="meta-row">
-        <span class="meta-label">種別:</span>
-        <span class="meta-value">${payloadMeta.type === 'text' ? 'テキストメッセージ' : '添付ファイル (' + escapeHtml(payloadMeta.filename) + ')'}</span>
-      </div>
-      <div class="meta-row">
-        <span class="meta-label">暗号規格:</span>
-        <span class="meta-value">AES-256-GCM (PBKDF2 100k)</span>
-      </div>
-      ${payloadMeta.hint ? `
-      <div class="meta-row" style="margin-top: 0.375rem; padding-top: 0.375rem; border-top: 1px dashed #1e293b;">
-        <span class="meta-label">パスワードのヒント:</span>
-        <span class="meta-value" style="color: #fef08a;">${escapeHtml(payloadMeta.hint)}</span>
-      </div>` : ''}
+    <div style="margin-top: 6px;">
+      <label style="font-size: 12px;">
+        <input type="checkbox" id="showPwd" onchange="togglePasswordVisibility()" /> パスワードを表示
+      </label>
     </div>
+    <div class="actions">
+      <button type="submit" id="btnDecrypt">復号</button>
+    </div>
+  </form>
 
-    <form id="decryptForm" onsubmit="handleDecrypt(event)">
-      <div class="field">
-        <label for="pwd">パスワードを入力</label>
-        <div class="input-wrap">
-          <input type="password" id="pwd" placeholder="設定されたパスワード" autocomplete="current-password" autofocus required />
-          <button type="button" class="toggle-btn" onclick="togglePasswordVisibility()">表示</button>
-        </div>
-      </div>
-      <button type="submit" id="btnDecrypt" class="btn">
-        <span>復号して中身を開く</span>
-      </button>
-    </form>
+  <div id="errorBox" class="error-msg" style="display: none;"></div>
 
-    <div id="errorBox" class="error" style="display: none;"></div>
-
-    <div id="resultBox" class="result-box" style="display: none;">
-      <h2 style="font-size: 0.875rem; font-weight: 600; color: #a7f3d0; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.375rem;">
-        ✓ 復号に成功しました
-      </h2>
-      <div id="textContainer" style="display: none;">
-        <div id="textContent" class="text-content"></div>
-        <button type="button" id="btnCopy" class="btn btn-copy" onclick="copyDecryptedText()">
-          テキストをクリップボードにコピー
-        </button>
-      </div>
-      <div id="fileContainer" style="display: none;">
-        <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 0.75rem;">
-          ファイル名: <strong id="outFilename" style="color: #f8fafc;"></strong>
-        </p>
-        <button type="button" id="btnDownload" class="btn btn-download" onclick="downloadDecryptedFile()">
-          復号したファイルをダウンロード
-        </button>
+  <div id="resultBox" class="res-section" style="display: none;">
+    <hr>
+    <div>復号完了</div>
+    <div id="textContainer" style="display: none; margin-top: 8px;">
+      <textarea id="textContent" readonly></textarea>
+      <div style="margin-top: 6px;">
+        <button type="button" id="btnCopy" onclick="copyDecryptedText()">コピー</button>
       </div>
     </div>
-
-    <div class="security-notice">
-      🛡️ 完全オフライン安全: インターネット回線を切断（機内モード）した状態でも問題なく復号可能です。パスワードや復号データが外部へ送信されることは一切ありません。
+    <div id="fileContainer" style="display: none; margin-top: 8px;">
+      <div class="meta-line">ファイル名: <span id="outFilename"></span></div>
+      <div style="margin-top: 6px;">
+        <button type="button" id="btnDownload" onclick="downloadDecryptedFile()">ダウンロード</button>
+      </div>
     </div>
   </div>
 
@@ -325,14 +178,8 @@ ${jsonBundle}
 
     function togglePasswordVisibility() {
       const input = document.getElementById('pwd');
-      const btn = event.target;
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = '隠す';
-      } else {
-        input.type = 'password';
-        btn.textContent = '表示';
-      }
+      const chk = document.getElementById('showPwd');
+      input.type = chk.checked ? 'text' : 'password';
     }
 
     function base64ToBuffer(base64) {
@@ -355,7 +202,7 @@ ${jsonBundle}
       errorBox.style.display = 'none';
       errorBox.textContent = '';
       btnDecrypt.disabled = true;
-      btnDecrypt.textContent = '復号処理中...';
+      btnDecrypt.textContent = '復号処理中';
 
       try {
         const pkgData = JSON.parse(document.getElementById('encrypted-package').textContent);
@@ -363,7 +210,6 @@ ${jsonBundle}
         const iv = new Uint8Array(base64ToBuffer(pkgData.iv));
         const ciphertext = base64ToBuffer(pkgData.ciphertext);
 
-        // Derive AES-GCM Key via PBKDF2
         const enc = new TextEncoder().encode(pwd);
         const baseKey = await window.crypto.subtle.importKey(
           'raw',
@@ -385,21 +231,19 @@ ${jsonBundle}
           ['decrypt']
         );
 
-        // Decrypt
         const plainBuffer = await window.crypto.subtle.decrypt(
           { name: 'AES-GCM', iv: iv },
           aesKey,
           ciphertext
         );
 
-        // Success
         resultBox.style.display = 'block';
         document.getElementById('decryptForm').style.display = 'none';
 
         if (pkgData.type === 'text') {
           const text = new TextDecoder('utf-8').decode(plainBuffer);
           document.getElementById('textContainer').style.display = 'block';
-          document.getElementById('textContent').textContent = text;
+          document.getElementById('textContent').value = text;
         } else {
           decryptedFileData = plainBuffer;
           decryptedFilename = pkgData.filename || 'decrypted-file.dat';
@@ -408,20 +252,19 @@ ${jsonBundle}
         }
       } catch (err) {
         errorBox.style.display = 'block';
-        errorBox.textContent = '復号に失敗しました。パスワードが正しくないか、データが破損しています。';
+        errorBox.textContent = '復号に失敗しました。パスワードが異なるかデータが破損しています。';
       } finally {
         btnDecrypt.disabled = false;
-        btnDecrypt.textContent = '復号して中身を開く';
+        btnDecrypt.textContent = '復号';
       }
     }
 
     function copyDecryptedText() {
-      const text = document.getElementById('textContent').textContent;
+      const text = document.getElementById('textContent').value;
       navigator.clipboard.writeText(text).then(() => {
         const btn = document.getElementById('btnCopy');
-        const orig = btn.textContent;
-        btn.textContent = '✓ コピーしました';
-        setTimeout(() => { btn.textContent = orig; }, 2000);
+        btn.textContent = 'コピー完了';
+        setTimeout(() => { btn.textContent = 'コピー'; }, 1800);
       });
     }
 
@@ -475,4 +318,3 @@ export async function generateSelfDecryptingHtml(
     filename: options.fileName,
   });
 }
-

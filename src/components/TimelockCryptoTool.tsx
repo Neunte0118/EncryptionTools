@@ -8,6 +8,7 @@ import {
   fetchCurrentDrandBeacon,
   DRAND_QUICKNET_INFO,
 } from '../utils/timelockUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import {
   Clock,
   Lock,
@@ -518,13 +519,28 @@ export const TimelockCryptoTool: React.FC = () => {
               </div>
 
               {encryptType === 'text' ? (
-                <textarea
-                  value={plaintextInput}
-                  onChange={(e) => setPlaintextInput(e.target.value)}
-                  rows={5}
-                  placeholder="未来の自分や相手へ届ける機密メッセージ、シークレット鍵、入札金額などを入力..."
-                  className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
-                />
+                <div className="space-y-2">
+                  <div className="flex justify-end">
+                    <FileLoaderButton
+                      label="平文ファイル読込"
+                      onFileLoaded={(content) => setPlaintextInput(content)}
+                      title="テキストファイルを読み込み"
+                    />
+                  </div>
+                  <textarea
+                    value={plaintextInput}
+                    onChange={(e) => setPlaintextInput(e.target.value)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) setPlaintextInput(await f.text());
+                    }}
+                    rows={5}
+                    placeholder="未来の自分や相手へ届ける機密メッセージ、シークレット鍵、入札金額などを入力..."
+                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-mono"
+                  />
+                </div>
               ) : (
                 <div>
                   <input

@@ -5,6 +5,7 @@ import {
   chacha20EncryptFile,
   chacha20DecryptFile,
 } from '../utils/chachaUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import {
   Lock,
   Unlock,
@@ -255,9 +256,16 @@ export const ChaCha20Tool: React.FC = () => {
         <form onSubmit={handleTextAction} className="space-y-5">
           {/* Key Input */}
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <label className="text-xs font-bold text-slate-300">
-              パスワード
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">
+                パスワード
+              </label>
+              <FileLoaderButton
+                label="鍵ファイル読込"
+                onFileLoaded={(content) => setPassword(content.trim())}
+                title="パスワードや秘密文字列ファイルを読込"
+              />
+            </div>
             <div className="relative">
               <input
                 type={showPassword ? 'text' : 'password'}
@@ -282,21 +290,40 @@ export const ChaCha20Tool: React.FC = () => {
               <label className="text-xs font-bold text-slate-300">
                 {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
               </label>
-              {action === 'decrypt' && cipherText && (
-                <button
-                  type="button"
-                  onClick={() => setCipherText('')}
-                  className="text-[11px] text-slate-400 hover:text-slate-200"
-                >
-                  クリア
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                <FileLoaderButton
+                  label="ファイルから読込"
+                  onFileLoaded={(content) => {
+                    if (action === 'encrypt') setPlainText(content);
+                    else setCipherText(content);
+                  }}
+                />
+                {action === 'decrypt' && cipherText && (
+                  <button
+                    type="button"
+                    onClick={() => setCipherText('')}
+                    className="text-[11px] text-slate-400 hover:text-slate-200"
+                  >
+                    クリア
+                  </button>
+                )}
+              </div>
             </div>
             <textarea
               value={action === 'encrypt' ? plainText : cipherText}
               onChange={(e) => {
                 if (action === 'encrypt') setPlainText(e.target.value);
                 else setCipherText(e.target.value);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) {
+                  const txt = await f.text();
+                  if (action === 'encrypt') setPlainText(txt);
+                  else setCipherText(txt);
+                }
               }}
               rows={4}
               placeholder={action === 'encrypt' ? '暗号化したいテキストを入力' : 'Base64 暗号文を貼り付け'}
@@ -398,9 +425,16 @@ export const ChaCha20Tool: React.FC = () => {
         <div className="space-y-5">
           {/* Key Input */}
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <label className="text-xs font-bold text-slate-300">
-              パスワード
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">
+                パスワード
+              </label>
+              <FileLoaderButton
+                label="鍵ファイル読込"
+                onFileLoaded={(content) => setFilePassword(content.trim())}
+                title="パスワードや秘密文字列ファイルを読込"
+              />
+            </div>
             <div className="relative">
               <input
                 type={showFilePassword ? 'text' : 'password'}

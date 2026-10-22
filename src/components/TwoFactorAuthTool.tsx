@@ -344,63 +344,58 @@ export const TwoFactorAuthTool: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-emerald-950/70 border border-emerald-800/60 text-emerald-400">
-                <KeyRound className="w-5 h-5" />
-              </span>
-              <h2 className="text-lg font-bold text-slate-100 tracking-tight">
-                ローカル 2要素認証管理
-              </h2>
-            </div>
-          </div>
+      {/* Unified Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <KeyRound className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-base font-bold text-slate-100">2要素認証管理</h2>
+        </div>
 
-          {/* Sub Navigation Tabs */}
-          <div className="flex items-center gap-1 p-1 bg-slate-950/70 rounded-lg border border-slate-800/80 text-xs">
-            <button
-              onClick={() => setActiveTab('authenticator')}
-              className={`px-3 py-1.5 font-medium rounded-md transition-colors whitespace-nowrap ${
-                activeTab === 'authenticator'
-                  ? 'bg-slate-800 text-slate-100 shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              認証コード一覧 {accounts.length} 件
-            </button>
-            <button
-              onClick={() => setActiveTab('generator')}
-              className={`px-3 py-1.5 font-medium rounded-md transition-colors whitespace-nowrap ${
-                activeTab === 'generator'
-                  ? 'bg-slate-800 text-slate-100 shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              アカウント新規登録
-            </button>
-            <button
-              onClick={() => setActiveTab('verify')}
-              className={`px-3 py-1.5 font-medium rounded-md transition-colors whitespace-nowrap ${
-                activeTab === 'verify'
-                  ? 'bg-slate-800 text-slate-100 shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              コード検証
-            </button>
-            <button
-              onClick={() => setActiveTab('import-export')}
-              className={`px-3 py-1.5 font-medium rounded-md transition-colors whitespace-nowrap ${
-                activeTab === 'import-export'
-                  ? 'bg-slate-800 text-slate-100 shadow-sm border border-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              連携・バックアップ
-            </button>
-          </div>
+        <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+          <button
+            type="button"
+            onClick={() => setActiveTab('authenticator')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeTab === 'authenticator'
+                ? 'bg-indigo-600 text-white font-medium'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            コード一覧
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('generator')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeTab === 'generator'
+                ? 'bg-indigo-600 text-white font-medium'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            新規登録
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('verify')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeTab === 'verify'
+                ? 'bg-indigo-600 text-white font-medium'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            検証
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('import-export')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeTab === 'import-export'
+                ? 'bg-indigo-600 text-white font-medium'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            入出力
+          </button>
         </div>
       </div>
 

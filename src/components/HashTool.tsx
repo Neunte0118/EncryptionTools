@@ -12,11 +12,10 @@ import {
   FileCheck,
   CheckCircle2,
   XCircle,
-  FileText,
 } from 'lucide-react';
 
 export const HashTool: React.FC = () => {
-  const [inputType, setInputType] = useState<'text' | 'file'>('text');
+  const [inputType, setInputType] = useState<'file' | 'text'>('file');
   const [textData, setTextData] = useState('');
   const [fileData, setFileData] = useState<{
     name: string;
@@ -24,7 +23,6 @@ export const HashTool: React.FC = () => {
     buffer: ArrayBuffer;
   } | null>(null);
 
-  // Initial hashes for empty string ""
   const [hashes, setHashes] = useState<Record<HashAlgorithm, { hex: string; base64: string }>>({
     'SHA-256': {
       hex: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
@@ -53,20 +51,15 @@ export const HashTool: React.FC = () => {
   const [copiedAlg, setCopiedAlg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Compute hashes whenever data changes
   useEffect(() => {
     let active = true;
 
     async function runHash() {
       let buffer: ArrayBuffer;
       if (inputType === 'text') {
-        buffer = stringToBuffer(textData); // Empty string produces 0-length buffer, matching empty string hash
+        buffer = stringToBuffer(textData);
       } else {
-        if (!fileData) {
-          buffer = new Uint8Array(0).buffer; // Default to empty data hash
-        } else {
-          buffer = fileData.buffer;
-        }
+        buffer = fileData ? fileData.buffer : new Uint8Array(0).buffer;
       }
 
       setIsCalculating(true);
@@ -89,7 +82,7 @@ export const HashTool: React.FC = () => {
           });
         }
       } catch (err) {
-        console.error('Hash calculation error', err);
+        console.error('Hash error', err);
       } finally {
         if (active) setIsCalculating(false);
       }
@@ -123,48 +116,44 @@ export const HashTool: React.FC = () => {
     setTimeout(() => setCopiedAlg(null), 1800);
   };
 
-  // Clean comparison check
   const cleanExpected = expectedChecksum.trim().toLowerCase();
   const matchedAlg = (['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1', 'MD5'] as HashAlgorithm[]).find(
     (alg) => hashes[alg].hex && hashes[alg].hex.toLowerCase() === cleanExpected
   );
 
   return (
-    <div className="space-y-6">
-      {/* Input Selection */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-800 pb-3 gap-3">
-          <div className="flex items-center gap-2">
-            <Hash className="w-5 h-5 text-indigo-400 shrink-0" />
-            <h2 className="text-base font-semibold text-slate-100">
-              ハッシュ値の計算・完全性確認
-            </h2>
-          </div>
-
-          <div className="flex rounded-md bg-slate-950 p-1 border border-slate-800 self-start sm:self-auto w-full sm:w-auto">
-            <button
-              onClick={() => setInputType('file')}
-              className={`flex-1 sm:flex-initial px-3 py-1 text-xs font-medium rounded transition-colors text-center ${
-                inputType === 'file'
-                  ? 'bg-slate-800 text-indigo-400'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              ファイル検証
-            </button>
-            <button
-              onClick={() => setInputType('text')}
-              className={`flex-1 sm:flex-initial px-3 py-1 text-xs font-medium rounded transition-colors text-center ${
-                inputType === 'text'
-                  ? 'bg-slate-800 text-indigo-400'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              テキスト入力
-            </button>
-          </div>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Unified Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <Hash className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-base font-bold text-slate-100">暗号学的ハッシュ計算</h2>
         </div>
 
+        <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+          <button
+            type="button"
+            onClick={() => setInputType('file')}
+            className={`px-3 py-1 rounded transition-colors ${
+              inputType === 'file' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            ファイル
+          </button>
+          <button
+            type="button"
+            onClick={() => setInputType('text')}
+            className={`px-3 py-1 rounded transition-colors ${
+              inputType === 'text' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            テキスト
+          </button>
+        </div>
+      </div>
+
+      {/* Input */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
         {inputType === 'file' ? (
           <div>
             <input
@@ -175,77 +164,64 @@ export const HashTool: React.FC = () => {
             />
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-8 text-center cursor-pointer bg-slate-950/60 transition-colors"
+              className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-6 text-center cursor-pointer bg-slate-950 transition-colors"
             >
-              <Upload className="w-10 h-10 text-slate-500 mx-auto mb-3" />
+              <Upload className="w-8 h-8 text-slate-500 mx-auto mb-2" />
               {fileData ? (
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-indigo-400 flex items-center justify-center gap-2">
+                  <div className="text-sm font-medium text-indigo-400 flex items-center justify-center gap-1.5">
                     <FileCheck className="w-4 h-4" />
                     <span>{fileData.name}</span>
                   </div>
-                  <div className="text-xs text-slate-400">
-                    ファイルサイズ: {(fileData.size / 1024).toFixed(2)} KB (
-                    {fileData.size.toLocaleString()} bytes)
-                  </div>
-                  <div className="text-xs text-slate-500 pt-2">
-                    クリックして別のファイルを選択
+                  <div className="text-xs text-slate-400 font-mono">
+                    {(fileData.size / 1024).toFixed(2)} KB
                   </div>
                 </div>
               ) : (
-                <div>
-                  <div className="text-sm font-medium text-slate-200">
-                    ファイルをドラッグ＆ドロップ、またはクリックして選択
-                  </div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    ブラウザのメモリ内で直接ストリーム計算されます
-                  </div>
+                <div className="text-xs text-slate-400">
+                  ファイルを選択
                 </div>
               )}
             </div>
           </div>
         ) : (
           <div>
+            <label className="block text-xs font-medium text-slate-300 mb-1">入力テキスト</label>
             <textarea
               rows={4}
               value={textData}
               onChange={(e) => setTextData(e.target.value)}
-              placeholder="ハッシュを計算したいテキストを入力..."
-              className="w-full bg-slate-950 border border-slate-800 rounded-md p-3 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+              placeholder="ハッシュを計算する文字列を入力..."
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-indigo-500"
             />
           </div>
         )}
       </div>
 
       {/* Checksum Verification Box */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
         <label className="block text-xs font-semibold text-slate-200">
-          照合用期待値 (Expected Checksum)
+          照合用期待値
         </label>
-        <p className="text-xs text-slate-400">
-          配布元から提供された SHA-256 / SHA-512 / SHA-1 / MD5 等のハッシュ値を貼り付けると、自動照合を行います。
-        </p>
         <input
           type="text"
           value={expectedChecksum}
           onChange={(e) => setExpectedChecksum(e.target.value)}
-          placeholder="照合したいハッシュ値を貼り付け (SHA-256 / SHA-512 / MD5 など)"
-          className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
+          placeholder="照合したいハッシュ値を入力"
+          className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-indigo-500"
         />
 
         {cleanExpected && (
           <div className="pt-1">
             {matchedAlg ? (
-              <div className="p-3 bg-emerald-950/50 border border-emerald-800 rounded-md flex items-center gap-2 text-emerald-200 text-xs font-medium">
+              <div className="p-3 bg-emerald-950/40 border border-emerald-800 rounded-lg flex items-center gap-2 text-emerald-300 text-xs font-medium">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>
-                  ✓ {matchedAlg} の計算結果と完全に一致しました（改ざんなし / 完全性確認済）
-                </span>
+                <span>{matchedAlg} と一致しました</span>
               </div>
             ) : (
-              <div className="p-3 bg-red-950/50 border border-red-800 rounded-md flex items-center gap-2 text-red-200 text-xs font-medium">
-                <XCircle className="w-4 h-4 text-red-400 shrink-0" />
-                <span>✕ 計算されたどのアルゴリズムのハッシュ値とも一致しません</span>
+              <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-lg flex items-center gap-2 text-rose-300 text-xs font-medium">
+                <XCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>一致しません</span>
               </div>
             )}
           </div>
@@ -253,17 +229,17 @@ export const HashTool: React.FC = () => {
       </div>
 
       {/* Calculated Hash Values */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-        <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-          <h3 className="text-sm font-semibold text-slate-200">計算結果 (Hex)</h3>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+        <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+          <h3 className="text-xs font-semibold text-slate-200">計算結果</h3>
           {isCalculating && (
             <span className="text-xs text-indigo-400 animate-pulse font-mono">
-              計算中...
+              計算中
             </span>
           )}
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-2.5">
           {(['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1', 'MD5'] as HashAlgorithm[]).map((alg) => {
             const hex = hashes[alg].hex;
             const isMatched = cleanExpected && hex.toLowerCase() === cleanExpected;
@@ -271,17 +247,17 @@ export const HashTool: React.FC = () => {
             return (
               <div
                 key={alg}
-                className={`p-3.5 rounded-lg border transition-colors ${
+                className={`p-3 rounded-lg border transition-colors ${
                   isMatched
-                    ? 'bg-emerald-950/30 border-emerald-700/80'
-                    : 'bg-slate-950 border-slate-800/80'
+                    ? 'bg-emerald-950/20 border-emerald-700/80'
+                    : 'bg-slate-950 border-slate-800'
                 }`}
               >
                 <div className="flex items-center justify-between text-xs text-slate-400 mb-1.5">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-slate-300 font-mono">{alg}</span>
                     {isMatched && (
-                      <span className="text-[11px] text-emerald-400 font-bold bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-800">
+                      <span className="text-[10px] text-emerald-400 font-bold bg-emerald-950 px-1.5 py-0.2 rounded border border-emerald-800">
                         MATCH
                       </span>
                     )}
@@ -289,17 +265,6 @@ export const HashTool: React.FC = () => {
 
                   {hex && (
                     <div className="flex items-center gap-2">
-                      {fileData && (
-                        <button
-                          onClick={() =>
-                            handleCopy(`${hex}  ${fileData.name}`, `${alg}_sum`)
-                          }
-                          className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200"
-                          title="sha256sum 形式でコピー"
-                        >
-                          {copiedAlg === `${alg}_sum` ? 'コピー済' : 'sum形式コピー'}
-                        </button>
-                      )}
                       <button
                         onClick={() => handleCopy(hex, alg)}
                         className="flex items-center gap-1 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
@@ -309,7 +274,7 @@ export const HashTool: React.FC = () => {
                         ) : (
                           <Copy className="w-3 h-3" />
                         )}
-                        <span>{copiedAlg === alg ? 'コピー済' : 'コピー'}</span>
+                        <span>{copiedAlg === alg ? 'コピー完了' : 'コピー'}</span>
                       </button>
                     </div>
                   )}
@@ -317,25 +282,9 @@ export const HashTool: React.FC = () => {
 
                 <div
                   onClick={() => hex && handleCopy(hex, alg)}
-                  className={`font-mono text-xs p-2.5 rounded break-all border transition-all cursor-pointer relative group ${
-                    copiedAlg === alg
-                      ? 'bg-emerald-950/70 text-emerald-200 border-emerald-600 ring-1 ring-emerald-500'
-                      : 'bg-slate-900/90 text-slate-300 border-slate-800/60 hover:border-indigo-500/80 hover:bg-slate-900'
-                  }`}
-                  title="クリックでハッシュ値をコピー"
+                  className="font-mono text-xs p-2 rounded break-all border bg-slate-900 border-slate-800 text-slate-300 cursor-pointer select-all"
                 >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="select-all">{hex}</span>
-                    <span
-                      className={`text-[10px] px-1.5 py-0.5 rounded font-sans shrink-0 transition-opacity ${
-                        copiedAlg === alg
-                          ? 'bg-emerald-600 text-white opacity-100 font-medium'
-                          : 'bg-slate-800 text-slate-400 opacity-0 group-hover:opacity-100'
-                      }`}
-                    >
-                      {copiedAlg === alg ? 'コピーしました！' : 'クリックでコピー'}
-                    </span>
-                  </div>
+                  {hex}
                 </div>
               </div>
             );

@@ -4,6 +4,7 @@ import {
   generateKeyPairOrKey,
 } from '../utils/cryptoUtils';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
+import { FileLoaderButton } from './FileLoaderButton';
 import {
   Key,
   Copy,
@@ -201,19 +202,32 @@ export const EcdhTool: React.FC<Props> = ({
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-semibold text-slate-300">あなたの秘密鍵 (PEM - 門外不出)</label>
-              <button
-                type="button"
-                onClick={() => setIsPrivRevealed(!isPrivRevealed)}
-                className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
-              >
-                {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
-              </button>
+              <label className="text-[11px] font-semibold text-slate-300">あなたの秘密鍵 (PEM)</label>
+              <div className="flex items-center gap-2">
+                <FileLoaderButton
+                  label="秘密鍵読込"
+                  onFileLoaded={(content) => setMyPrivKeyPem(content)}
+                  title="秘密鍵ファイル (.pem, .key) を選択またはドロップ"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsPrivRevealed(!isPrivRevealed)}
+                  className="text-[10px] text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                >
+                  {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
+                </button>
+              </div>
             </div>
             <textarea
               value={myPrivKeyPem}
               onChange={(e) => setMyPrivKeyPem(e.target.value)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) setMyPrivKeyPem(await f.text());
+              }}
               rows={4}
               placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
               className={`w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500 ${
@@ -225,7 +239,7 @@ export const EcdhTool: React.FC<Props> = ({
           {myPubKeyPem && (
             <div>
               <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-semibold text-slate-300">あなたの公開鍵 (相手へ共有)</label>
+                <label className="text-[11px] font-semibold text-slate-300">あなたの公開鍵</label>
                 <button
                   type="button"
                   onClick={() => handleCopy(myPubKeyPem, 'myPub')}
@@ -252,15 +266,23 @@ export const EcdhTool: React.FC<Props> = ({
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
               <span>2. 通信相手の公開鍵 (Peer Public Key)</span>
             </h3>
+            <FileLoaderButton
+              label="相手公開鍵読込"
+              onFileLoaded={(content) => setPeerPubKeyPem(content)}
+              title="相手の公開鍵ファイル (.pem, .pub) を選択またはドロップ"
+            />
           </div>
 
           <div>
-            <label className="block text-[11px] font-semibold text-slate-300 mb-1">
-              相手から受け取った公開鍵 (PEM)
-            </label>
             <textarea
               value={peerPubKeyPem}
               onChange={(e) => setPeerPubKeyPem(e.target.value)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) setPeerPubKeyPem(await f.text());
+              }}
               rows={6}
               placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
               className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500"

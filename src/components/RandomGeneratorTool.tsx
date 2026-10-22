@@ -13,18 +13,13 @@ import {
   Copy,
   Check,
   RefreshCw,
-  Sparkles,
-  Layers,
-  Binary,
-  Fingerprint,
-  Info,
 } from 'lucide-react';
 
 export const RandomGeneratorTool: React.FC = () => {
   const [activeMode, setActiveMode] = useState<'regex' | 'uuid' | 'bytes'>('regex');
 
   // Regex Mode State
-  const [patternInput, setPatternInput] = useState('');
+  const [patternInput, setPatternInput] = useState('[A-Za-z0-9]{32}');
   const [regexCount, setRegexCount] = useState<number>(5);
   const [regexResults, setRegexResults] = useState<string[]>([]);
   const [regexError, setRegexError] = useState('');
@@ -40,7 +35,6 @@ export const RandomGeneratorTool: React.FC = () => {
   const [byteLength, setByteLength] = useState<number>(32);
   const [bytesResults, setBytesResults] = useState<{ hex: string; base64: string }[]>([]);
 
-  // Copy Feedback
   const [copiedIndex, setCopiedIndex] = useState<string | null>(null);
 
   const handleCopy = (text: string, id: string) => {
@@ -55,16 +49,14 @@ export const RandomGeneratorTool: React.FC = () => {
     setTimeout(() => setCopiedIndex(null), 1800);
   };
 
-  // Generate Regex Strings
   const handleGenerateRegex = () => {
     setRegexError('');
     if (!patternInput.trim()) {
-      setRegexError('正規表現またはパターンを入力してください');
+      setRegexError('パターンを入力してください');
       return;
     }
 
     try {
-      // Validate pattern syntax
       new RegExp(patternInput);
       const generated: string[] = [];
       for (let i = 0; i < regexCount; i++) {
@@ -76,7 +68,6 @@ export const RandomGeneratorTool: React.FC = () => {
     }
   };
 
-  // Generate UUIDs
   const handleGenerateUuids = () => {
     const list: string[] = [];
     for (let i = 0; i < uuidCount; i++) {
@@ -99,7 +90,6 @@ export const RandomGeneratorTool: React.FC = () => {
     setUuidResults(list);
   };
 
-  // Generate Raw Bytes
   const handleGenerateBytes = () => {
     const list: { hex: string; base64: string }[] = [];
     for (let i = 0; i < 5; i++) {
@@ -112,7 +102,6 @@ export const RandomGeneratorTool: React.FC = () => {
     setBytesResults(list);
   };
 
-  // Run initial generations
   useEffect(() => {
     handleGenerateRegex();
     handleGenerateUuids();
@@ -138,70 +127,60 @@ export const RandomGeneratorTool: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6">
-      {/* Top Mode Navigation */}
-      <div className="flex border-b border-slate-800 overflow-x-auto">
-        <button
-          onClick={() => setActiveMode('regex')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
-            activeMode === 'regex'
-              ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Sparkles className="w-4 h-4" />
-          <span>正規表現・カスタムパターン</span>
-        </button>
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Unified Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <Dices className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-base font-bold text-slate-100">暗号論的擬似乱数生成</h2>
+        </div>
 
-        <button
-          onClick={() => setActiveMode('uuid')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
-            activeMode === 'uuid'
-              ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Fingerprint className="w-4 h-4" />
-          <span>UUID (v7 / v4) 一括生成</span>
-        </button>
-
-        <button
-          onClick={() => setActiveMode('bytes')}
-          className={`flex items-center gap-2 px-6 py-3 text-sm font-medium border-b-2 shrink-0 transition-colors ${
-            activeMode === 'bytes'
-              ? 'border-indigo-500 text-indigo-400 bg-slate-900/60'
-              : 'border-transparent text-slate-400 hover:text-slate-200'
-          }`}
-        >
-          <Binary className="w-4 h-4" />
-          <span>暗号乱数生バイト (Hex / Base64)</span>
-        </button>
+        <div className="flex rounded-lg bg-slate-900 p-0.5 border border-slate-800 text-xs">
+          <button
+            type="button"
+            onClick={() => setActiveMode('regex')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeMode === 'regex' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            パターン乱数
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode('uuid')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeMode === 'uuid' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            UUID
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveMode('bytes')}
+            className={`px-3 py-1 rounded transition-colors ${
+              activeMode === 'bytes' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            生バイト
+          </button>
+        </div>
       </div>
 
-      {/* --- REGEX & CUSTOM PATTERN MODE --- */}
+      {/* Mode 1: Regex & Pattern */}
       {activeMode === 'regex' && (
-        <div className="space-y-6">
-          {/* Pattern Inputs */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Dices className="w-4 h-4 text-indigo-400" />
-                <span>正規表現・パターン指定（CSPRNG 暗号論的乱数）</span>
-              </div>
-            </div>
-
-            {/* Presets Quick Picker */}
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <div>
               <label className="block text-xs font-medium text-slate-400 mb-2">
-                プリセットテンプレートから選択:
+                プリセット
               </label>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {RANDOM_PRESETS.map((p) => (
                   <button
                     key={p.id}
+                    type="button"
                     onClick={() => handleSelectPreset(p)}
-                    className="px-2.5 py-1 text-xs bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded transition-colors"
-                    title={p.description}
+                    className="px-2.5 py-1 text-xs bg-slate-950 hover:bg-slate-800 text-slate-300 border border-slate-800 rounded-lg transition-colors"
                   >
                     {p.name}
                   </button>
@@ -209,75 +188,64 @@ export const RandomGeneratorTool: React.FC = () => {
               </div>
             </div>
 
-            {/* Pattern Input & Count */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-3 text-xs">
               <div className="md:col-span-3">
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  正規表現 / パターン構文
+                <label className="block text-slate-300 font-medium mb-1">
+                  正規表現パターン
                 </label>
                 <input
                   type="text"
                   value={patternInput}
                   onChange={(e) => setPatternInput(e.target.value)}
-                  placeholder="例: [A-Za-z0-9]{32} または sk_[0-9a-z]{24}"
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
+                  placeholder="例: [A-Za-z0-9]{32}"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs font-mono text-slate-100 focus:outline-none focus:border-indigo-500"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-slate-300 font-medium mb-1">
                   生成件数
                 </label>
                 <select
                   value={regexCount}
                   onChange={(e) => setRegexCount(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
                   <option value={1}>1 件</option>
                   <option value={5}>5 件</option>
                   <option value={10}>10 件</option>
                   <option value={20}>20 件</option>
-                  <option value={50}>50 件</option>
                 </select>
               </div>
             </div>
 
-            {/* Quick Helper Chips */}
-            <div>
-              <div className="text-[11px] text-slate-400 mb-1.5 flex items-center gap-1">
-                <Info className="w-3 h-3 text-slate-500" />
-                <span>クリックしてパターンに追加:</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5 text-xs">
-                {[
-                  { label: '[a-z]', snippet: '[a-z]' },
-                  { label: '[A-Z]', snippet: '[A-Z]' },
-                  { label: '[0-9]', snippet: '[0-9]' },
-                  { label: '[A-Za-z0-9]', snippet: '[A-Za-z0-9]' },
-                  { label: '[0-9a-f]', snippet: '[0-9a-f]' },
-                  { label: '記号 [!@#$%^&*]', snippet: '[!@#$%^&*]' },
-                  { label: '{16}', snippet: '{16}' },
-                  { label: '{32}', snippet: '{32}' },
-                  { label: '{8,16}', snippet: '{8,16}' },
-                  { label: 'ハイフン -', snippet: '-' },
-                  { label: 'アンダースコア _', snippet: '_' },
-                ].map((chip) => (
-                  <button
-                    key={chip.label}
-                    onClick={() => handleAddHelper(chip.snippet)}
-                    className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded font-mono text-[11px] transition-colors"
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
+            <div className="flex flex-wrap gap-1.5 text-xs">
+              {[
+                { label: '[a-z]', snippet: '[a-z]' },
+                { label: '[A-Z]', snippet: '[A-Z]' },
+                { label: '[0-9]', snippet: '[0-9]' },
+                { label: '[A-Za-z0-9]', snippet: '[A-Za-z0-9]' },
+                { label: '[0-9a-f]', snippet: '[0-9a-f]' },
+                { label: '記号', snippet: '[!@#$%^&*]' },
+                { label: '{16}', snippet: '{16}' },
+                { label: '{32}', snippet: '{32}' },
+              ].map((chip) => (
+                <button
+                  key={chip.label}
+                  type="button"
+                  onClick={() => handleAddHelper(chip.snippet)}
+                  className="px-2 py-0.5 bg-slate-950 hover:bg-slate-800 text-slate-400 border border-slate-800 rounded font-mono text-xs transition-colors"
+                >
+                  {chip.label}
+                </button>
+              ))}
             </div>
 
-            {/* Buttons */}
-            <div className="flex items-center gap-3 pt-1">
+            <div className="flex items-center gap-2 pt-1">
               <button
+                type="button"
                 onClick={handleGenerateRegex}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
                 <span>乱数を再生成</span>
@@ -285,54 +253,37 @@ export const RandomGeneratorTool: React.FC = () => {
 
               {regexResults.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => handleCopyAll(regexResults)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded text-xs transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs transition-colors"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  <span>
-                    {copiedIndex === 'all' ? '全件コピー完了' : '全件まとめてコピー'}
-                  </span>
+                  <span>{copiedIndex === 'all' ? '全件コピー完了' : '全件コピー'}</span>
                 </button>
               )}
             </div>
 
             {regexError && (
-              <div className="p-3 text-xs bg-red-950/70 border border-red-800 text-red-200 rounded">
+              <div className="p-2.5 text-xs bg-rose-950/40 border border-rose-800 text-rose-300 rounded-lg">
                 {regexError}
               </div>
             )}
           </div>
 
-          {/* Results List */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
-              <span>生成結果 ({regexResults.length} 件)</span>
-              <span className="text-[11px] text-slate-500">
-                テキスト枠をクリックで即座にコピー
-              </span>
-            </div>
-
-            <div className="space-y-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+            <span className="text-xs text-slate-400 block pb-1 border-b border-slate-800">
+              生成結果 {regexResults.length} 件
+            </span>
+            <div className="space-y-1.5">
               {regexResults.map((item, idx) => (
                 <div
                   key={idx}
                   onClick={() => handleCopy(item, `reg_${idx}`)}
-                  className={`p-3 rounded-md border font-mono text-xs transition-all cursor-pointer relative group flex items-center justify-between select-all ${
-                    copiedIndex === `reg_${idx}`
-                      ? 'bg-emerald-950/70 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                      : 'bg-slate-950 text-indigo-300 border-slate-800/80 hover:border-indigo-500/80 hover:bg-slate-950/90'
-                  }`}
-                  title="クリックでコピー"
+                  className="p-2.5 rounded-lg border bg-slate-950 text-indigo-300 border-slate-800 font-mono text-xs flex items-center justify-between cursor-pointer hover:border-indigo-500"
                 >
                   <span className="break-all">{item}</span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded font-sans shrink-0 ml-2 transition-opacity ${
-                      copiedIndex === `reg_${idx}`
-                        ? 'bg-emerald-600 text-white opacity-100 font-medium'
-                        : 'bg-slate-800 text-slate-400 opacity-0 group-hover:opacity-100'
-                    }`}
-                  >
-                    {copiedIndex === `reg_${idx}` ? 'コピー済！' : 'クリックでコピー'}
+                  <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                    {copiedIndex === `reg_${idx}` ? 'コピー完了' : 'コピー'}
                   </span>
                 </div>
               ))}
@@ -341,130 +292,100 @@ export const RandomGeneratorTool: React.FC = () => {
         </div>
       )}
 
-      {/* --- UUID GENERATOR MODE --- */}
+      {/* Mode 2: UUID */}
       {activeMode === 'uuid' && (
-        <div className="space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Fingerprint className="w-4 h-4 text-indigo-400" />
-                <span>UUID 生成（RFC 9562 v7 時系列 / RFC 4122 v4 ランダム）</span>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  UUID バージョン
+                <label className="block text-slate-300 font-medium mb-1">
+                  バージョン
                 </label>
                 <select
                   value={uuidVersion}
                   onChange={(e) => setUuidVersion(e.target.value as 'v7' | 'v4')}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 font-medium"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="v7">UUID v7 (RFC 9562: 時系列ソート推奨)</option>
-                  <option value="v4">UUID v4 (RFC 4122: 完全ランダム)</option>
+                  <option value="v7">UUID v7 時系列</option>
+                  <option value="v4">UUID v4 ランダム</option>
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
+                <label className="block text-slate-300 font-medium mb-1">
                   生成件数
                 </label>
                 <select
                   value={uuidCount}
                   onChange={(e) => setUuidCount(Number(e.target.value))}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
                   <option value={1}>1 件</option>
                   <option value={5}>5 件</option>
                   <option value={10}>10 件</option>
                   <option value={20}>20 件</option>
-                  <option value={50}>50 件</option>
                 </select>
               </div>
 
-              <div className="flex items-center gap-4 pt-6 sm:col-span-2">
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+              <div className="flex items-center gap-4 pt-5 sm:col-span-2">
+                <label className="flex items-center gap-1.5 text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={uuidUppercase}
                     onChange={(e) => setUuidUppercase(e.target.checked)}
-                    className="rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-0"
+                    className="rounded bg-slate-950 border-slate-800 text-indigo-600"
                   />
-                  <span>大文字表記 (A-F)</span>
+                  <span>大文字</span>
                 </label>
-
-                <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+                <label className="flex items-center gap-1.5 text-slate-300 cursor-pointer">
                   <input
                     type="checkbox"
                     checked={uuidNoHyphens}
                     onChange={(e) => setUuidNoHyphens(e.target.checked)}
-                    className="rounded border-slate-800 bg-slate-950 text-indigo-600 focus:ring-0"
+                    className="rounded bg-slate-950 border-slate-800 text-indigo-600"
                   />
-                  <span>ハイフンなし (32桁)</span>
+                  <span>ハイフンなし</span>
                 </label>
               </div>
             </div>
 
-            <div className="flex items-center gap-3 pt-2">
+            <div className="flex items-center gap-2 pt-1">
               <button
+                type="button"
                 onClick={handleGenerateUuids}
-                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
               >
                 <RefreshCw className="w-3.5 h-3.5" />
-                <span>UUID を生成</span>
+                <span>UUIDを生成</span>
               </button>
 
               {uuidResults.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => handleCopyAll(uuidResults)}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded text-xs transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 rounded-lg text-xs transition-colors"
                 >
                   <Copy className="w-3.5 h-3.5" />
-                  <span>
-                    {copiedIndex === 'all' ? '全件コピー完了' : '全件まとめてコピー'}
-                  </span>
+                  <span>{copiedIndex === 'all' ? '全件コピー完了' : '全件コピー'}</span>
                 </button>
               )}
             </div>
           </div>
 
-          {/* UUID Results */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-3">
-            <div className="flex items-center justify-between text-xs text-slate-400 border-b border-slate-800 pb-2">
-              <div className="flex items-center gap-2">
-                <span>生成された UUID ({uuidResults.length} 件)</span>
-                <span className="px-1.5 py-0.5 rounded bg-indigo-950/80 border border-indigo-800/60 text-indigo-300 font-mono text-[10px]">
-                  {uuidVersion.toUpperCase()}
-                </span>
-              </div>
-              <span className="text-[11px] text-slate-500">
-                クリックで即座にコピー
-              </span>
-            </div>
-
-            <div className="space-y-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
+            <span className="text-xs text-slate-400 block pb-1 border-b border-slate-800">
+              UUID {uuidResults.length} 件
+            </span>
+            <div className="space-y-1.5">
               {uuidResults.map((item, idx) => (
                 <div
                   key={idx}
                   onClick={() => handleCopy(item, `uuid_${idx}`)}
-                  className={`p-3 rounded-md border font-mono text-xs transition-all cursor-pointer relative group flex items-center justify-between select-all ${
-                    copiedIndex === `uuid_${idx}`
-                      ? 'bg-emerald-950/70 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                      : 'bg-slate-950 text-indigo-300 border-slate-800/80 hover:border-indigo-500/80 hover:bg-slate-950/90'
-                  }`}
-                  title="クリックでコピー"
+                  className="p-2.5 rounded-lg border bg-slate-950 text-indigo-300 border-slate-800 font-mono text-xs flex items-center justify-between cursor-pointer hover:border-indigo-500"
                 >
                   <span className="break-all">{item}</span>
-                  <span
-                    className={`text-[10px] px-2 py-0.5 rounded font-sans shrink-0 ml-2 transition-opacity ${
-                      copiedIndex === `uuid_${idx}`
-                        ? 'bg-emerald-600 text-white opacity-100 font-medium'
-                        : 'bg-slate-800 text-slate-400 opacity-0 group-hover:opacity-100'
-                    }`}
-                  >
-                    {copiedIndex === `uuid_${idx}` ? 'コピー済！' : 'クリックでコピー'}
+                  <span className="text-[10px] text-slate-500 shrink-0 ml-2">
+                    {copiedIndex === `uuid_${idx}` ? 'コピー完了' : 'コピー'}
                   </span>
                 </div>
               ))}
@@ -473,101 +394,75 @@ export const RandomGeneratorTool: React.FC = () => {
         </div>
       )}
 
-      {/* --- RAW BYTES (HEX / BASE64) MODE --- */}
+      {/* Mode 3: Raw Bytes */}
       {activeMode === 'bytes' && (
-        <div className="space-y-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-                <Binary className="w-4 h-4 text-indigo-400" />
-                <span>暗号論的乱数生バイト生成 (CSPRNG Raw Bytes)</span>
-              </div>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-4">
+        <div className="space-y-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="flex flex-wrap items-center gap-3">
               <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">
-                  バイト長 (Byte Length)
+                <label className="block text-slate-300 font-medium mb-1">
+                  バイト長
                 </label>
                 <select
                   value={byteLength}
                   onChange={(e) => setByteLength(Number(e.target.value))}
-                  className="bg-slate-950 border border-slate-800 rounded px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                  className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
-                  <option value={16}>16 bytes (128 bit)</option>
-                  <option value={24}>24 bytes (192 bit)</option>
-                  <option value={32}>32 bytes (256 bit)</option>
-                  <option value={48}>48 bytes (384 bit)</option>
-                  <option value={64}>64 bytes (512 bit)</option>
-                  <option value={128}>128 bytes (1024 bit)</option>
+                  <option value={16}>16 bytes</option>
+                  <option value={24}>24 bytes</option>
+                  <option value={32}>32 bytes</option>
+                  <option value={64}>64 bytes</option>
+                  <option value={128}>128 bytes</option>
                 </select>
               </div>
 
-              <div className="pt-5">
+              <div className="pt-4">
                 <button
+                  type="button"
                   onClick={handleGenerateBytes}
-                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded text-xs font-medium transition-colors shadow-sm"
+                  className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-medium transition-colors shadow-sm"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
-                  <span>ランダムバイトを再生成</span>
+                  <span>再生成</span>
                 </button>
               </div>
             </div>
           </div>
 
-          {/* Bytes Results */}
-          <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-            <div className="text-xs text-slate-400 border-b border-slate-800 pb-2">
-              生成結果 (Hex & Base64) - クリックでコピー
-            </div>
-
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+            <span className="text-xs text-slate-400 block pb-1 border-b border-slate-800">
+              生成結果 Hex および Base64
+            </span>
             <div className="space-y-3">
               {bytesResults.map((item, idx) => (
-                <div key={idx} className="bg-slate-950 border border-slate-800/80 rounded-md p-3 space-y-2">
-                  {/* Hex */}
+                <div key={idx} className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 text-xs">
                   <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                      <span>Hex ({byteLength * 2} 文字)</span>
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
+                      <span>Hex</span>
                       <button
+                        type="button"
                         onClick={() => handleCopy(item.hex, `hex_${idx}`)}
                         className="text-slate-300 hover:text-white"
                       >
-                        {copiedIndex === `hex_${idx}` ? 'コピー済' : 'コピー'}
+                        {copiedIndex === `hex_${idx}` ? 'コピー完了' : 'コピー'}
                       </button>
                     </div>
-                    <code
-                      onClick={() => handleCopy(item.hex, `hex_${idx}`)}
-                      className={`text-xs font-mono block p-2 rounded break-all border cursor-pointer select-all transition-all ${
-                        copiedIndex === `hex_${idx}`
-                          ? 'bg-emerald-950 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                          : 'bg-slate-900 text-indigo-300 border-slate-800 hover:border-indigo-500/80'
-                      }`}
-                      title="クリックでコピー"
-                    >
+                    <code className="text-xs font-mono block p-2 rounded bg-slate-900 text-indigo-300 border border-slate-800 break-all select-all">
                       {item.hex}
                     </code>
                   </div>
-
-                  {/* Base64 */}
                   <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
                       <span>Base64</span>
                       <button
+                        type="button"
                         onClick={() => handleCopy(item.base64, `b64_${idx}`)}
                         className="text-slate-300 hover:text-white"
                       >
-                        {copiedIndex === `b64_${idx}` ? 'コピー済' : 'コピー'}
+                        {copiedIndex === `b64_${idx}` ? 'コピー完了' : 'コピー'}
                       </button>
                     </div>
-                    <code
-                      onClick={() => handleCopy(item.base64, `b64_${idx}`)}
-                      className={`text-xs font-mono block p-2 rounded break-all border cursor-pointer select-all transition-all ${
-                        copiedIndex === `b64_${idx}`
-                          ? 'bg-emerald-950 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                          : 'bg-slate-900 text-emerald-300 border-slate-800 hover:border-emerald-500/80'
-                      }`}
-                      title="クリックでコピー"
-                    >
+                    <code className="text-xs font-mono block p-2 rounded bg-slate-900 text-emerald-300 border border-slate-800 break-all select-all">
                       {item.base64}
                     </code>
                   </div>

@@ -10,6 +10,7 @@ import {
   MlDsaLevel,
   PqcEncryptedPackage,
 } from '../utils/postQuantumUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import {
   ShieldCheck,
   ShieldAlert,
@@ -495,12 +496,24 @@ export const PostQuantumCryptoTool: React.FC = () => {
               {kemAction === 'encrypt' ? (
                 <>
                   <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-300">
-                      受取人の公開鍵 Hex
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300">
+                        受取人の公開鍵 Hex
+                      </label>
+                      <FileLoaderButton
+                        label="公開鍵読込"
+                        onFileLoaded={(content) => setKemPeerPubKeyHex(content.trim())}
+                      />
+                    </div>
                     <textarea
                       value={kemPeerPubKeyHex}
                       onChange={(e) => setKemPeerPubKeyHex(e.target.value)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setKemPeerPubKeyHex((await f.text()).trim());
+                      }}
                       rows={2}
                       placeholder="未入力の場合は上で生成した自身の公開鍵を使用"
                       className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
@@ -508,12 +521,24 @@ export const PostQuantumCryptoTool: React.FC = () => {
                   </div>
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-300">
-                      暗号化する平文
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300">
+                        暗号化する平文
+                      </label>
+                      <FileLoaderButton
+                        label="ファイルから読込"
+                        onFileLoaded={(content) => setKemPlainText(content)}
+                      />
+                    </div>
                     <textarea
                       value={kemPlainText}
                       onChange={(e) => setKemPlainText(e.target.value)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setKemPlainText(await f.text());
+                      }}
                       rows={4}
                       placeholder="テキストを入力"
                       className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-teal-500 font-mono"
@@ -567,12 +592,24 @@ export const PostQuantumCryptoTool: React.FC = () => {
               ) : (
                 <>
                   <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-300">
-                      復号用の秘密鍵 Hex
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300">
+                        復号用の秘密鍵 Hex
+                      </label>
+                      <FileLoaderButton
+                        label="秘密鍵読込"
+                        onFileLoaded={(content) => setKemMySecKeyHex(content.trim())}
+                      />
+                    </div>
                     <textarea
                       value={kemMySecKeyHex}
                       onChange={(e) => setKemMySecKeyHex(e.target.value)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setKemMySecKeyHex((await f.text()).trim());
+                      }}
                       rows={2}
                       placeholder="秘密鍵のHexを入力"
                       className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"
@@ -580,12 +617,24 @@ export const PostQuantumCryptoTool: React.FC = () => {
                   </div>
 
                   <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                    <label className="text-xs font-bold text-slate-300">
-                      暗号化パッケージ JSON
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-bold text-slate-300">
+                        暗号化パッケージ JSON
+                      </label>
+                      <FileLoaderButton
+                        label="暗号文読込"
+                        onFileLoaded={(content) => setKemEncryptedPkgJson(content.trim())}
+                      />
+                    </div>
                     <textarea
                       value={kemEncryptedPkgJson}
                       onChange={(e) => setKemEncryptedPkgJson(e.target.value)}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={async (e) => {
+                        e.preventDefault();
+                        const f = e.dataTransfer.files?.[0];
+                        if (f) setKemEncryptedPkgJson((await f.text()).trim());
+                      }}
                       rows={5}
                       placeholder="暗号化されたJSONを貼り付け"
                       className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-teal-500"

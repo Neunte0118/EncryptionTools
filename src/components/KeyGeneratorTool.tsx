@@ -40,7 +40,6 @@ export const KeyGeneratorTool: React.FC<Props> = ({
   const [result, setResult] = useState<GeneratedKeyResult | null>(null);
   const [isPrivateKeyRevealed, setIsPrivateKeyRevealed] = useState(false);
 
-  // Vault Append Form
   const [appendTitle, setAppendTitle] = useState('');
   const [appendMemo, setAppendMemo] = useState('');
   const [appendSuccess, setAppendSuccess] = useState(false);
@@ -62,16 +61,16 @@ export const KeyGeneratorTool: React.FC<Props> = ({
 
       const typeLabel =
         keyType === 'rsa-pss'
-          ? `RSA-PSS (${modulusLength}bit, ${hash})`
+          ? `RSA-PSS ${modulusLength}bit ${hash}`
           : keyType === 'rsa-oaep'
-          ? `RSA-OAEP (${modulusLength}bit, ${hash})`
+          ? `RSA-OAEP ${modulusLength}bit ${hash}`
           : keyType === 'rsa-pkcs1'
-          ? `RSA-PKCS#1 (${modulusLength}bit, ${hash})`
+          ? `RSA-PKCS#1 ${modulusLength}bit ${hash}`
           : keyType === 'ecdsa'
-          ? `ECDSA (${namedCurve})`
+          ? `ECDSA ${namedCurve}`
           : keyType === 'ecdh'
-          ? `ECDH (${namedCurve})`
-          : `AES-GCM (${aesLength}bit)`;
+          ? `ECDH ${namedCurve}`
+          : `AES-GCM ${aesLength}bit`;
 
       setAppendTitle(typeLabel);
       setAppendMemo(`生成日: ${new Date().toLocaleDateString('ja-JP')}`);
@@ -125,74 +124,72 @@ export const KeyGeneratorTool: React.FC<Props> = ({
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
-    <div className="space-y-6">
-      {/* Parameter Selection Form */}
-      <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-4">
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Unified Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
           <Key className="w-5 h-5 text-indigo-400" />
-          <h2 className="text-base font-semibold text-slate-100">
-            暗号鍵ペア / 共通鍵の新規生成
-          </h2>
+          <h2 className="text-base font-bold text-slate-100">暗号鍵ペア生成</h2>
         </div>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
-          {/* Key Type */}
+      {/* Parameter Selection Form */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
           <div>
-            <label className="block text-xs font-medium text-slate-300 mb-1.5">
+            <label className="block text-slate-300 font-medium mb-1">
               アルゴリズム種別
             </label>
             <select
               value={keyType}
               onChange={(e) => setKeyType(e.target.value as KeyGenOptions['type'])}
-              className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+              className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500"
             >
-              <optgroup label="RSA (公開鍵暗号・電子署名)">
-                <option value="rsa-pss">RSA-PSS (高セキュリティ署名)</option>
-                <option value="rsa-oaep">RSA-OAEP (公開鍵暗号化)</option>
-                <option value="rsa-pkcs1">RSASSA-PKCS1-v1_5 (互換署名)</option>
+              <optgroup label="RSA">
+                <option value="rsa-pss">RSA-PSS 署名</option>
+                <option value="rsa-oaep">RSA-OAEP 暗号化</option>
+                <option value="rsa-pkcs1">RSASSA-PKCS1-v1_5</option>
               </optgroup>
-              <optgroup label="楕円曲線暗号 (ECC)">
-                <option value="ecdsa">ECDSA (楕円曲線電子署名)</option>
-                <option value="ecdh">ECDH (鍵共有)</option>
+              <optgroup label="楕円曲線暗号 ECC">
+                <option value="ecdsa">ECDSA 署名</option>
+                <option value="ecdh">ECDH 鍵共有</option>
               </optgroup>
               <optgroup label="共通鍵暗号">
-                <option value="aes-gcm">AES-GCM (高速認証付き暗号)</option>
+                <option value="aes-gcm">AES-GCM</option>
               </optgroup>
             </select>
           </div>
 
-          {/* RSA-specific: Modulus Length */}
           {keyType.startsWith('rsa') && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                鍵長 (Modulus Length)
+              <label className="block text-slate-300 font-medium mb-1">
+                鍵長
               </label>
               <select
                 value={modulusLength}
                 onChange={(e) => setModulusLength(Number(e.target.value))}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500"
               >
-                <option value={2048}>2048 bit (標準)</option>
-                <option value={3072}>3072 bit (高強度)</option>
-                <option value={4096}>4096 bit (最高強度)</option>
+                <option value={2048}>2048 bit</option>
+                <option value={3072}>3072 bit</option>
+                <option value={4096}>4096 bit</option>
               </select>
             </div>
           )}
 
-          {/* Hash Algorithm for RSA & ECDSA */}
           {(keyType.startsWith('rsa') || keyType === 'ecdsa') && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label className="block text-slate-300 font-medium mb-1">
                 ハッシュ関数
               </label>
               <select
                 value={hash}
                 onChange={(e) => setHash(e.target.value as HashAlgorithm)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500"
               >
                 <option value="SHA-256">SHA-256</option>
                 <option value="SHA-384">SHA-384</option>
@@ -201,103 +198,96 @@ export const KeyGeneratorTool: React.FC<Props> = ({
             </div>
           )}
 
-          {/* Curve for ECDSA & ECDH */}
           {(keyType === 'ecdsa' || keyType === 'ecdh') && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
-                定義済み楕円曲線 (Named Curve)
+              <label className="block text-slate-300 font-medium mb-1">
+                定義済み楕円曲線
               </label>
               <select
                 value={namedCurve}
                 onChange={(e) => setNamedCurve(e.target.value as 'P-256' | 'P-384' | 'P-521')}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500"
               >
-                <option value="P-256">P-256 (NIST / 256-bit)</option>
-                <option value="P-384">P-384 (NIST / 384-bit)</option>
-                <option value="P-521">P-521 (NIST / 521-bit)</option>
+                <option value="P-256">P-256</option>
+                <option value="P-384">P-384</option>
+                <option value="P-521">P-521</option>
               </select>
             </div>
           )}
 
-          {/* AES Length */}
           {keyType === 'aes-gcm' && (
             <div>
-              <label className="block text-xs font-medium text-slate-300 mb-1.5">
+              <label className="block text-slate-300 font-medium mb-1">
                 AES鍵長
               </label>
               <select
                 value={aesLength}
                 onChange={(e) => setAesLength(Number(e.target.value) as 128 | 256)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-md px-3 py-2 text-slate-200 focus:outline-none focus:border-indigo-500"
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-indigo-500"
               >
-                <option value={256}>256 bit (AES-256)</option>
-                <option value={128}>128 bit (AES-128)</option>
+                <option value={256}>256 bit</option>
+                <option value={128}>128 bit</option>
               </select>
             </div>
           )}
         </div>
 
-        <div className="pt-2">
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-sm rounded-md transition-colors shadow-sm"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>生成中...</span>
-              </>
-            ) : (
-              <>
-                <Key className="w-4 h-4" />
-                <span>鍵を生成する</span>
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium text-xs flex items-center justify-center gap-2 transition-colors shadow-sm"
+        >
+          {isGenerating ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>生成中...</span>
+            </>
+          ) : (
+            <>
+              <Key className="w-4 h-4" />
+              <span>鍵を生成</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Generated Result Section */}
       {result && (
-        <div className="bg-slate-900 border border-slate-800 rounded-lg p-5 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
-              <Check className="w-4 h-4 text-emerald-400" />
-              <span>鍵の生成が完了しました</span>
-            </h3>
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+            <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+              <Check className="w-4 h-4" />
+              <span>鍵生成完了</span>
+            </span>
           </div>
 
           {/* Append To Vault Card */}
-          <div className="bg-indigo-950/40 border border-indigo-800/50 rounded-lg p-4 space-y-3">
-            <div className="flex items-center gap-2 text-indigo-300 font-semibold text-sm">
-              <PlusCircle className="w-4 h-4" />
-              <span>鍵管理ファイルに追記して保存</span>
+          <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-3">
+            <div className="flex items-center gap-1.5 text-indigo-300 font-semibold text-xs">
+              <PlusCircle className="w-3.5 h-3.5" />
+              <span>鍵保管庫に追記</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
               <div>
-                <label className="block text-xs text-slate-300 mb-1">
-                  鍵のタイトル
-                </label>
+                <label className="block text-slate-400 mb-1">タイトル</label>
                 <input
                   type="text"
                   value={appendTitle}
                   onChange={(e) => setAppendTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-400"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                   placeholder="タイトルを入力"
                 />
               </div>
 
               <div>
-                <label className="block text-xs text-slate-300 mb-1">
-                  メモ / 用途
-                </label>
+                <label className="block text-slate-400 mb-1">メモ</label>
                 <input
                   type="text"
                   value={appendMemo}
                   onChange={(e) => setAppendMemo(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded px-3 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-400"
+                  className="w-full bg-slate-900 border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-slate-100 focus:outline-none focus:border-indigo-500"
                   placeholder="用途や保管メモ"
                 />
               </div>
@@ -305,22 +295,24 @@ export const KeyGeneratorTool: React.FC<Props> = ({
 
             <div className="flex items-center gap-3 pt-1">
               <button
+                type="button"
                 onClick={handleAppendToVault}
-                className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded font-medium text-xs transition-colors shadow-sm"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-medium text-xs transition-colors shadow-sm"
               >
                 <PlusCircle className="w-3.5 h-3.5" />
-                <span>鍵管理ファイルに追記</span>
+                <span>保管庫に追加</span>
               </button>
 
               {appendSuccess && (
-                <div className="flex items-center gap-2 text-xs text-emerald-400 font-medium animate-fadeIn">
-                  <span>✓ 鍵管理ファイルに追加されました</span>
+                <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium">
+                  <span>追加完了</span>
                   {onNavigateToVault && (
                     <button
+                      type="button"
                       onClick={onNavigateToVault}
                       className="underline hover:text-emerald-300 ml-1"
                     >
-                      鍵管理タブで確認
+                      保管庫で確認
                     </button>
                   )}
                 </div>
@@ -330,183 +322,95 @@ export const KeyGeneratorTool: React.FC<Props> = ({
 
           {/* Keys Display */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Public Key */}
             {result.publicKeyPem && (
-              <div className="bg-slate-950 border border-slate-800 rounded-md p-4 space-y-2">
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-slate-200">
-                    公開鍵 (SPKI PEM)
-                  </span>
+                  <span className="font-semibold text-slate-200">公開鍵 SPKI PEM</span>
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
                       onClick={() => handleCopy(result.publicKeyPem!, 'pub')}
-                      className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
                     >
-                      {copiedKey === 'pub' ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      ) : (
-                        <Copy className="w-3.5 h-3.5" />
-                      )}
-                      <span>{copiedKey === 'pub' ? 'コピー済' : 'コピー'}</span>
+                      {copiedKey === 'pub' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedKey === 'pub' ? 'コピー完了' : 'コピー'}</span>
                     </button>
                     <button
-                      onClick={() =>
-                        handleDownload(result.publicKeyPem!, `public_key_${keyType}.pem`)
-                      }
-                      className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                      type="button"
+                      onClick={() => handleDownload(result.publicKeyPem!, `public_key_${keyType}.pem`)}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>.pem保存</span>
+                      <Download className="w-3 h-3" />
+                      <span>保存</span>
                     </button>
                   </div>
                 </div>
-                <div className="relative group">
-                  <pre
-                    onClick={() => handleCopy(result.publicKeyPem!, 'pub')}
-                    className={`text-[11px] font-mono p-2.5 rounded max-h-48 overflow-y-auto whitespace-pre-wrap break-all border cursor-pointer transition-all select-all ${
-                      copiedKey === 'pub'
-                        ? 'bg-indigo-950/60 text-indigo-200 border-indigo-500 ring-1 ring-indigo-500'
-                        : 'bg-slate-900 text-slate-300 border-slate-800/60 hover:border-indigo-500/80 hover:bg-slate-900/90'
-                    }`}
-                    title="クリックで公開鍵をコピー"
-                  >
-                    {result.publicKeyPem}
-                  </pre>
-                  <span className="absolute top-2 right-2 text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    {copiedKey === 'pub' ? 'コピー済' : 'クリックでコピー'}
-                  </span>
-                </div>
+                <pre className="text-xs font-mono p-2 bg-slate-900 border border-slate-800 rounded text-slate-300 max-h-40 overflow-y-auto whitespace-pre-wrap break-all select-all">
+                  {result.publicKeyPem}
+                </pre>
               </div>
             )}
 
-            {/* Private Key */}
             {result.privateKeyPem && (
-              <div className="bg-slate-950 border border-slate-800 rounded-md p-4 space-y-2">
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-semibold text-amber-400 flex items-center gap-1">
                     <Shield className="w-3.5 h-3.5" />
-                    秘密鍵 (PKCS#8 PEM)
+                    <span>秘密鍵 PKCS#8 PEM</span>
                   </span>
                   <div className="flex items-center gap-1">
                     <button
+                      type="button"
                       onClick={() => setIsPrivateKeyRevealed(!isPrivateKeyRevealed)}
-                      className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs"
                     >
-                      {isPrivateKeyRevealed ? (
-                        <EyeOff className="w-3.5 h-3.5 text-slate-400" />
-                      ) : (
-                        <Eye className="w-3.5 h-3.5 text-slate-400" />
-                      )}
-                      <span>{isPrivateKeyRevealed ? '秘密鍵を隠す' : '秘密鍵を表示'}</span>
+                      {isPrivateKeyRevealed ? '隠す' : '表示'}
                     </button>
                     {isPrivateKeyRevealed && (
                       <button
+                        type="button"
                         onClick={() => handleCopy(result.privateKeyPem!, 'priv')}
-                        className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                        className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
                       >
-                        {copiedKey === 'priv' ? (
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                        <span>{copiedKey === 'priv' ? 'コピー済' : 'コピー'}</span>
+                        {copiedKey === 'priv' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedKey === 'priv' ? 'コピー完了' : 'コピー'}</span>
                       </button>
                     )}
                     <button
-                      onClick={() =>
-                        handleDownload(result.privateKeyPem!, `private_key_${keyType}.key`)
-                      }
-                      className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                      type="button"
+                      onClick={() => handleDownload(result.privateKeyPem!, `private_key_${keyType}.key`)}
+                      className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
                     >
-                      <Download className="w-3.5 h-3.5" />
-                      <span>.key保存</span>
+                      <Download className="w-3 h-3" />
+                      <span>保存</span>
                     </button>
                   </div>
                 </div>
-                <div className="relative group">
-                  <pre
-                    onClick={() => {
-                      if (!isPrivateKeyRevealed) {
-                        setIsPrivateKeyRevealed(true);
-                      } else {
-                        handleCopy(result.privateKeyPem!, 'priv');
-                      }
-                    }}
-                    className={`text-[11px] font-mono p-2.5 rounded max-h-48 overflow-y-auto whitespace-pre-wrap break-all border cursor-pointer transition-all ${
-                      !isPrivateKeyRevealed
-                        ? 'bg-slate-900/60 text-slate-500 border-slate-800/60 hover:border-amber-600/60'
-                        : copiedKey === 'priv'
-                        ? 'bg-amber-950/60 text-amber-200 border-amber-500 ring-1 ring-amber-500 select-all'
-                        : 'bg-slate-900 text-amber-300/90 border-slate-800/60 hover:border-amber-500/80 select-all'
-                    }`}
-                    title={isPrivateKeyRevealed ? 'クリックで秘密鍵をコピー' : 'クリックして秘密鍵を表示'}
-                  >
-                    {isPrivateKeyRevealed
-                      ? result.privateKeyPem
-                      : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••\n[保護されています。「秘密鍵を表示」ボタンを押して確認]'}
-                  </pre>
-                  <span className="absolute top-2 right-2 text-[10px] bg-slate-800 text-slate-300 px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                    {isPrivateKeyRevealed
-                      ? copiedKey === 'priv'
-                        ? 'コピー済'
-                        : 'クリックでコピー'
-                      : 'クリックで表示'}
-                  </span>
-                </div>
+                <pre className="text-xs font-mono p-2 bg-slate-900 border border-slate-800 rounded text-amber-300/90 max-h-40 overflow-y-auto whitespace-pre-wrap break-all select-all">
+                  {isPrivateKeyRevealed
+                    ? result.privateKeyPem
+                    : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••\n[保護されています]'}
+                </pre>
               </div>
             )}
 
-            {/* Raw AES Key */}
             {result.rawKeyBase64 && (
-              <div className="bg-slate-950 border border-slate-800 rounded-md p-4 space-y-3 col-span-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="font-semibold text-emerald-400">
-                    AES-GCM 鍵データ
-                  </span>
-                </div>
-                <div className="space-y-2">
+              <div className="bg-slate-950 border border-slate-800 rounded-lg p-3 space-y-2 col-span-2">
+                <span className="font-semibold text-emerald-400 text-xs">AES-GCM 共通鍵</span>
+                <div className="space-y-2 text-xs">
                   <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
+                    <div className="flex items-center justify-between text-slate-400 mb-1">
                       <span>Base64</span>
                       <button
+                        type="button"
                         onClick={() => handleCopy(result.rawKeyBase64!, 'aes-b64')}
                         className="text-slate-300 hover:text-white"
                       >
-                        {copiedKey === 'aes-b64' ? 'コピー済' : 'コピー'}
+                        {copiedKey === 'aes-b64' ? 'コピー完了' : 'コピー'}
                       </button>
                     </div>
-                    <code
-                      onClick={() => handleCopy(result.rawKeyBase64!, 'aes-b64')}
-                      className={`text-xs font-mono block p-2 rounded break-all border cursor-pointer select-all transition-all ${
-                        copiedKey === 'aes-b64'
-                          ? 'bg-emerald-950 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                          : 'bg-slate-900 text-emerald-300 border-slate-800 hover:border-emerald-500/80'
-                      }`}
-                      title="クリックでコピー"
-                    >
+                    <code className="text-xs font-mono block p-2 rounded bg-slate-900 text-emerald-300 border border-slate-800 break-all select-all">
                       {result.rawKeyBase64}
-                    </code>
-                  </div>
-                  <div>
-                    <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1">
-                      <span>Hex</span>
-                      <button
-                        onClick={() => handleCopy(result.rawKeyHex!, 'aes-hex')}
-                        className="text-slate-300 hover:text-white"
-                      >
-                        {copiedKey === 'aes-hex' ? 'コピー済' : 'コピー'}
-                      </button>
-                    </div>
-                    <code
-                      onClick={() => handleCopy(result.rawKeyHex!, 'aes-hex')}
-                      className={`text-xs font-mono block p-2 rounded break-all border cursor-pointer select-all transition-all ${
-                        copiedKey === 'aes-hex'
-                          ? 'bg-emerald-950 text-emerald-200 border-emerald-500 ring-1 ring-emerald-500'
-                          : 'bg-slate-900 text-emerald-300/80 border-slate-800 hover:border-emerald-500/80'
-                      }`}
-                      title="クリックでコピー"
-                    >
-                      {result.rawKeyHex}
                     </code>
                   </div>
                 </div>

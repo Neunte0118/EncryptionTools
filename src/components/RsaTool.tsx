@@ -10,6 +10,7 @@ import {
   decryptFileHybrid,
   HashAlgorithm,
 } from '../utils/cryptoUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -358,10 +359,23 @@ export const RsaTool: React.FC<Props> = ({
 
         {action === 'encrypt' ? (
           <div>
-            <label className="block text-[11px] text-slate-400 mb-1">受取人のRSA公開鍵 PEM</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="text-[11px] text-slate-400">受取人のRSA公開鍵 PEM</label>
+              <FileLoaderButton
+                label="公開鍵読込"
+                onFileLoaded={(content) => setPublicKeyPem(content)}
+                title="RSA公開鍵ファイル (.pem, .pub, .crt) を選択またはドロップ"
+              />
+            </div>
             <textarea
               value={publicKeyPem}
               onChange={(e) => setPublicKeyPem(e.target.value)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) setPublicKeyPem(await f.text());
+              }}
               rows={3}
               placeholder="-----BEGIN PUBLIC KEY-----"
               className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-purple-500"
@@ -371,18 +385,31 @@ export const RsaTool: React.FC<Props> = ({
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="text-[11px] text-slate-400">復号用のRSA秘密鍵 PEM</label>
-              <button
-                type="button"
-                onClick={() => setIsPrivRevealed(!isPrivRevealed)}
-                className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
-              >
-                {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
-              </button>
+              <div className="flex items-center gap-2">
+                <FileLoaderButton
+                  label="秘密鍵読込"
+                  onFileLoaded={(content) => setPrivateKeyPem(content)}
+                  title="RSA秘密鍵ファイル (.pem, .key) を選択またはドロップ"
+                />
+                <button
+                  type="button"
+                  onClick={() => setIsPrivRevealed(!isPrivRevealed)}
+                  className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                >
+                  {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
+                </button>
+              </div>
             </div>
             <textarea
               value={privateKeyPem}
               onChange={(e) => setPrivateKeyPem(e.target.value)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) setPrivateKeyPem(await f.text());
+              }}
               rows={3}
               placeholder="-----BEGIN PRIVATE KEY-----"
               className={`w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-purple-500 ${
@@ -397,14 +424,33 @@ export const RsaTool: React.FC<Props> = ({
       {targetType === 'text' && (
         <div className="space-y-5">
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <label className="text-xs font-bold text-slate-300">
-              {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">
+                {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
+              </label>
+              <FileLoaderButton
+                label="ファイルから読込"
+                onFileLoaded={(content) => {
+                  if (action === 'encrypt') setPlainText(content);
+                  else setCipherText(content);
+                }}
+              />
+            </div>
             <textarea
               value={action === 'encrypt' ? plainText : cipherText}
               onChange={(e) => {
                 if (action === 'encrypt') setPlainText(e.target.value);
                 else setCipherText(e.target.value);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) {
+                  const txt = await f.text();
+                  if (action === 'encrypt') setPlainText(txt);
+                  else setCipherText(txt);
+                }
               }}
               rows={4}
               placeholder={action === 'encrypt' ? 'テキストを入力' : 'Base64 暗号文を貼り付け'}

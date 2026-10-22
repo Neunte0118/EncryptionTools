@@ -12,6 +12,7 @@ import {
   decryptFileAesRaw,
   detectEncryptedFileMetadata,
 } from '../utils/cryptoUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -379,13 +380,18 @@ export const AesTool: React.FC<Props> = ({
         </div>
 
         {keyInputType === 'password' && (
-          <div>
+          <div className="flex gap-2">
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="パスワードを入力"
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
+              className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
+            />
+            <FileLoaderButton
+              label="鍵ファイル読込"
+              onFileLoaded={(content) => setPassword(content.trim())}
+              title="パスワードや秘密鍵ファイルを指定"
             />
           </div>
         )}
@@ -398,6 +404,12 @@ export const AesTool: React.FC<Props> = ({
               onChange={(e) => setRawKeyBase64(e.target.value)}
               placeholder="32バイトのBase64鍵を入力"
               className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
+            />
+            <FileLoaderButton
+              label="鍵ファイル読込"
+              mode="base64"
+              onFileLoaded={(content) => setRawKeyBase64(content)}
+              title="32バイト共通鍵バイナリまたはBase64ファイルを指定"
             />
             <button
               type="button"
@@ -441,14 +453,33 @@ export const AesTool: React.FC<Props> = ({
       {targetType === 'text' && (
         <div className="space-y-5">
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <label className="text-xs font-bold text-slate-300">
-              {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
-            </label>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-300">
+                {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
+              </label>
+              <FileLoaderButton
+                label="ファイルから読込"
+                onFileLoaded={(content) => {
+                  if (action === 'encrypt') setPlainText(content);
+                  else setCipherText(content);
+                }}
+              />
+            </div>
             <textarea
               value={action === 'encrypt' ? plainText : cipherText}
               onChange={(e) => {
                 if (action === 'encrypt') setPlainText(e.target.value);
                 else setCipherText(e.target.value);
+              }}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={async (e) => {
+                e.preventDefault();
+                const f = e.dataTransfer.files?.[0];
+                if (f) {
+                  const txt = await f.text();
+                  if (action === 'encrypt') setPlainText(txt);
+                  else setCipherText(txt);
+                }
               }}
               rows={4}
               placeholder={action === 'encrypt' ? 'テキストを入力' : 'Base64 暗号文を貼り付け'}

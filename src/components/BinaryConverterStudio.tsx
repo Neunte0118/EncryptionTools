@@ -204,42 +204,32 @@ export const BinaryConverterStudio: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Banner */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 sm:p-6 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="p-1.5 rounded-lg bg-indigo-950/70 border border-indigo-800/60 text-indigo-400">
-                <Binary className="w-5 h-5" />
-              </span>
-              <h2 className="text-lg font-bold text-slate-100 tracking-tight">
-                バイナリ・エンコーディング変換スタジオ
-              </h2>
-            </div>
-            <p className="text-xs text-slate-400">
-              どの欄からでも直接入力・編集可能。UTF-8 / Hex / Base64 / Base64URL / Base32 / Base58 / 2進数ビット列 / 10進Byte配列 がすべてリアルタイム双方向同期されます。
-            </p>
-          </div>
+      {/* Header */}
+      <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+        <div className="flex items-center gap-2.5">
+          <Binary className="w-5 h-5 text-indigo-400" />
+          <h2 className="text-base font-bold text-slate-100">
+            バイナリ・基数変換
+          </h2>
+        </div>
 
-          <div className="flex items-center gap-2 shrink-0">
-            {rawBytes.length > 0 && (
-              <button
-                type="button"
-                onClick={handleClearAll}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 hover:bg-rose-950/60 hover:text-rose-300 border border-slate-700/60 text-xs text-slate-300 transition-colors cursor-pointer"
-                title="すべての入力フィールドをクリア"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                <span>クリア</span>
-              </button>
-            )}
+        <div className="flex items-center gap-2 shrink-0">
+          {rawBytes.length > 0 && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-rose-950/60 hover:text-rose-300 border border-slate-700/60 text-xs text-slate-300 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>クリア</span>
+            </button>
+          )}
 
-            <label className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700/80 text-xs text-slate-200 cursor-pointer transition-colors shadow-sm">
-              <Upload className="w-3.5 h-3.5 text-indigo-400" />
-              <span>バイナリファイルを読込</span>
-              <input type="file" onChange={handleFileUpload} className="hidden" />
-            </label>
-          </div>
+          <label className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs text-slate-200 cursor-pointer transition-colors shadow-sm">
+            <Upload className="w-3.5 h-3.5 text-indigo-400" />
+            <span>ファイル読込</span>
+            <input type="file" onChange={handleFileUpload} className="hidden" />
+          </label>
         </div>
       </div>
 
@@ -279,7 +269,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <FileText className="w-4 h-4 text-emerald-400" />
-              <span>UTF-8 文字列 (プレーンテキスト)</span>
+              <span>UTF-8 文字列</span>
             </div>
             <button
               type="button"
@@ -316,7 +306,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Hash className="w-4 h-4 text-amber-400" />
-              <span>Hex (16進数)</span>
+              <span>Hex 16進数</span>
             </div>
             <div className="flex items-center gap-2">
               <div className="flex items-center gap-1 text-[10px] text-slate-500">
@@ -367,7 +357,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <FileCode className="w-4 h-4 text-cyan-400" />
-              <span>Base64 (RFC 4648)</span>
+              <span>Base64</span>
             </div>
             <button
               type="button"
@@ -404,7 +394,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <FileCode className="w-4 h-4 text-sky-400" />
-              <span>Base64URL (URLセーフ / パディングなし)</span>
+              <span>Base64URL</span>
             </div>
             <button
               type="button"
@@ -441,7 +431,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Layers className="w-4 h-4 text-purple-400" />
-              <span>Base32 (RFC 4648 / 2FA互換)</span>
+              <span>Base32</span>
             </div>
             <button
               type="button"
@@ -478,7 +468,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Layers className="w-4 h-4 text-pink-400" />
-              <span>Base58 (Bitcoin / IPFS)</span>
+              <span>Base58</span>
             </div>
             <button
               type="button"
@@ -515,7 +505,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Binary className="w-4 h-4 text-teal-400" />
-              <span>Binary (2進数 ビット列)</span>
+              <span>2進数ビット列</span>
             </div>
             <div className="flex items-center gap-2">
               <button
@@ -561,7 +551,7 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-semibold text-slate-300">
               <Cpu className="w-4 h-4 text-orange-400" />
-              <span>Decimal Byte Array (10進 uint8配列)</span>
+              <span>10進バイト配列</span>
             </div>
             <button
               type="button"
@@ -594,13 +584,13 @@ export const BinaryConverterStudio: React.FC = () => {
         </div>
       </div>
 
-      {/* Hex Dump Section (xxd style) */}
+      {/* Hex Dump Section */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Cpu className="w-4 h-4 text-indigo-400" />
             <h3 className="text-sm font-semibold text-slate-200">
-              Hex ダンプビューア (xxd / hexdump -C 互換)
+              Hex ダンプビューア
             </h3>
           </div>
           <button
@@ -619,7 +609,7 @@ export const BinaryConverterStudio: React.FC = () => {
 
         <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 overflow-x-auto">
           <pre className="font-mono text-xs text-slate-300 leading-relaxed tabular-nums whitespace-pre">
-            {computedValues.hexDump || '(データが入力されていません)'}
+            {computedValues.hexDump || 'データが入力されていません'}
           </pre>
         </div>
       </div>
@@ -630,21 +620,18 @@ export const BinaryConverterStudio: React.FC = () => {
           <div className="space-y-1">
             <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
               <Cpu className="w-4 h-4 text-amber-400" />
-              エンディアン & 整数型パーサー (Big-Endian / Little-Endian)
+              エンディアン・整数型パーサー
             </h3>
-            <p className="text-xs text-slate-400">
-              バイナリプロトコルやネットワークパケット解析向けの数値解釈テーブル
-            </p>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs font-mono tabular-nums">
               <thead>
                 <tr className="border-b border-slate-800 text-slate-400">
-                  <th className="py-2 px-3 font-semibold">型 (Type)</th>
+                  <th className="py-2 px-3 font-semibold">型</th>
                   <th className="py-2 px-3 font-semibold">バイト幅</th>
-                  <th className="py-2 px-3 font-semibold">リトルエンディアン (LE)</th>
-                  <th className="py-2 px-3 font-semibold">ビッグエンディアン (BE)</th>
+                  <th className="py-2 px-3 font-semibold">リトルエンディアン</th>
+                  <th className="py-2 px-3 font-semibold">ビッグエンディアン</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 text-slate-300">

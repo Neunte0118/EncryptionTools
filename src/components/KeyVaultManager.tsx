@@ -166,16 +166,13 @@ export const KeyVaultManager: React.FC<Props> = ({
         <div>
           <div className="flex items-center gap-2">
             <Key className="w-5 h-5 text-indigo-400" />
-            <h2 className="text-lg font-semibold text-slate-100">
+            <h2 className="text-base font-semibold text-slate-100">
               {vault.vaultName || '鍵管理ファイル'}
             </h2>
             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
               {vault.keys.length} 鍵登録済み
             </span>
           </div>
-          <p className="text-xs text-slate-400 mt-1">
-            単一ファイル（JSON）として鍵・タイトル・メモを一元管理します。
-          </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -189,29 +186,27 @@ export const KeyVaultManager: React.FC<Props> = ({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
-            title="既存の鍵管理ファイルを読み込む"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
           >
-            <Upload className="w-4 h-4 text-sky-400 shrink-0" />
+            <Upload className="w-3.5 h-3.5 text-sky-400 shrink-0" />
             <span>ファイル読込</span>
           </button>
 
           {/* Download/Export File */}
           <button
             onClick={() => exportVaultToFile(vault)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
-            title="現在の全キーを単一ファイルとして保存・ダウンロード"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
           >
-            <Download className="w-4 h-4 shrink-0" />
-            <span>ファイル書出 (保存)</span>
+            <Download className="w-3.5 h-3.5 shrink-0" />
+            <span>ファイル書出</span>
           </button>
 
           {/* Manual Add Key */}
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-2 text-xs sm:text-sm bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
+            className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
           >
-            <Plus className="w-4 h-4 text-emerald-400 shrink-0" />
+            <Plus className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
             <span>鍵を手動追記</span>
           </button>
         </div>
@@ -220,28 +215,28 @@ export const KeyVaultManager: React.FC<Props> = ({
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
         <div className="relative flex-1">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-slate-400" />
+          <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
           <input
             type="text"
             placeholder="タイトル、メモ、アルゴリズムで検索..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-md pl-9 pr-4 py-2 text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+            className="w-full bg-slate-900 border border-slate-800 rounded-md pl-9 pr-4 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-indigo-500"
           />
         </div>
 
         <select
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
-          className="bg-slate-900 border border-slate-800 rounded-md px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
+          className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
         >
           <option value="all">すべての暗号種別</option>
-          <option value="rsa-pss">RSA-PSS (署名)</option>
-          <option value="rsa-oaep">RSA-OAEP (暗号化)</option>
+          <option value="rsa-pss">RSA-PSS 署名</option>
+          <option value="rsa-oaep">RSA-OAEP 暗号化</option>
           <option value="rsa-pkcs1">RSA-PKCS#1</option>
-          <option value="ecdsa">ECDSA (楕円曲線署名)</option>
-          <option value="ecdh">ECDH (鍵共有)</option>
-          <option value="aes-gcm">AES-GCM (共通鍵)</option>
+          <option value="ecdsa">ECDSA 楕円曲線署名</option>
+          <option value="ecdh">ECDH 鍵共有</option>
+          <option value="aes-gcm">AES-GCM 共通鍵</option>
         </select>
       </div>
 
@@ -250,9 +245,6 @@ export const KeyVaultManager: React.FC<Props> = ({
         <div className="text-center py-12 border border-dashed border-slate-800 rounded-lg p-6 bg-slate-900/50">
           <FileText className="w-10 h-10 text-slate-600 mx-auto mb-3" />
           <p className="text-slate-300 font-medium">鍵が登録されていません</p>
-          <p className="text-slate-500 text-sm mt-1 max-w-md mx-auto">
-            「鍵生成」タブから新しい鍵ペアを生成して追記するか、「ファイル読み込み」または「鍵を手動追記」から追加してください。
-          </p>
         </div>
       ) : (
         <div className="grid gap-4">
@@ -361,7 +353,7 @@ export const KeyVaultManager: React.FC<Props> = ({
                   {item.publicKeyPem && (
                     <div className="bg-slate-950/80 border border-slate-800 rounded p-3 space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span className="font-semibold text-slate-300">公開鍵 (Public Key)</span>
+                        <span className="font-semibold text-slate-300">公開鍵</span>
                         <div className="flex items-center gap-1">
                           <button
                             onClick={() => handleCopy(item.publicKeyPem!, `${item.id}_pub`)}
@@ -401,7 +393,7 @@ export const KeyVaultManager: React.FC<Props> = ({
                       <div className="flex items-center justify-between text-xs text-slate-400">
                         <span className="font-semibold text-amber-400/90 flex items-center gap-1">
                           <Shield className="w-3.5 h-3.5 text-amber-400" />
-                          秘密鍵 (Private Key)
+                          秘密鍵
                         </span>
                         <div className="flex items-center gap-1">
                           <button
@@ -467,7 +459,7 @@ export const KeyVaultManager: React.FC<Props> = ({
                   {item.rawKeyBase64 && (
                     <div className="bg-slate-950/80 border border-slate-800 rounded p-3 space-y-2 col-span-2">
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span className="font-semibold text-emerald-400">共通鍵 (Base64)</span>
+                        <span className="font-semibold text-emerald-400">共通鍵 Base64</span>
                         <button
                           onClick={() => handleCopy(item.rawKeyBase64!, `${item.id}_raw`)}
                           className="flex items-center gap-1 px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"

@@ -6,6 +6,7 @@ import {
   encryptPgpFile,
   decryptPgpFile,
 } from '../utils/pgpUtils';
+import { FileLoaderButton } from './FileLoaderButton';
 import {
   Shield,
   Key,
@@ -357,50 +358,88 @@ export const PgpStudioTool: React.FC = () => {
             {action === 'encrypt' ? (
               <div className="space-y-3">
                 <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] text-slate-400">受取人のPGP公開鍵</label>
+                    <FileLoaderButton
+                      label="公開鍵読込"
+                      onFileLoaded={(content) => setEncPubKeyArmored(content)}
+                      title="公開鍵ファイル (.asc, .pub, .pgp) を選択またはドロップ"
+                    />
+                  </div>
                   <textarea
                     value={encPubKeyArmored}
                     onChange={(e) => setEncPubKeyArmored(e.target.value)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) setEncPubKeyArmored(await f.text());
+                    }}
                     rows={3}
                     placeholder="-----BEGIN PGP PUBLIC KEY BLOCK-----"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
-                <div>
+                <div className="flex gap-2">
                   <input
                     type="password"
                     value={encPassphrase}
                     onChange={(e) => setEncPassphrase(e.target.value)}
                     placeholder="パスフレーズのみで暗号化する場合は入力"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500"
+                    className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500"
+                  />
+                  <FileLoaderButton
+                    label="パス読込"
+                    onFileLoaded={(content) => setEncPassphrase(content.trim())}
                   />
                 </div>
               </div>
             ) : (
               <div className="space-y-3">
                 <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="text-[11px] text-slate-400">復号用のPGP秘密鍵</label>
+                    <FileLoaderButton
+                      label="秘密鍵読込"
+                      onFileLoaded={(content) => setDecPrivKeyArmored(content)}
+                      title="秘密鍵ファイル (.asc, .sec, .key) を選択またはドロップ"
+                    />
+                  </div>
                   <textarea
                     value={decPrivKeyArmored}
                     onChange={(e) => setDecPrivKeyArmored(e.target.value)}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={async (e) => {
+                      e.preventDefault();
+                      const f = e.dataTransfer.files?.[0];
+                      if (f) setDecPrivKeyArmored(await f.text());
+                    }}
                     rows={3}
                     placeholder="-----BEGIN PGP PRIVATE KEY BLOCK-----"
                     className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500"
                   />
                 </div>
-                <div className="relative">
-                  <input
-                    type={showDecPassphrase ? 'text' : 'password'}
-                    value={decPassphrase}
-                    onChange={(e) => setDecPassphrase(e.target.value)}
-                    placeholder="秘密鍵のパスフレーズまたは共通暗号パスフレーズ"
-                    className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500 pr-10"
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type={showDecPassphrase ? 'text' : 'password'}
+                      value={decPassphrase}
+                      onChange={(e) => setDecPassphrase(e.target.value)}
+                      placeholder="秘密鍵のパスフレーズまたは共通暗号パスフレーズ"
+                      className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-amber-500 pr-10"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowDecPassphrase(!showDecPassphrase)}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-1"
+                    >
+                      {showDecPassphrase ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                  <FileLoaderButton
+                    label="パス読込"
+                    onFileLoaded={(content) => setDecPassphrase(content.trim())}
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowDecPassphrase(!showDecPassphrase)}
-                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 p-1"
-                  >
-                    {showDecPassphrase ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
                 </div>
               </div>
             )}
@@ -418,14 +457,33 @@ export const PgpStudioTool: React.FC = () => {
           {targetType === 'text' && (
             <div className="space-y-5">
               <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-                <label className="text-xs font-bold text-slate-300">
-                  {action === 'encrypt' ? '暗号化する平文' : '復号するPGP暗号文'}
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-300">
+                    {action === 'encrypt' ? '暗号化する平文' : '復号するPGP暗号文'}
+                  </label>
+                  <FileLoaderButton
+                    label="ファイルから読込"
+                    onFileLoaded={(content) => {
+                      if (action === 'encrypt') setEncPlaintext(content);
+                      else setDecCiphertextArmored(content);
+                    }}
+                  />
+                </div>
                 <textarea
                   value={action === 'encrypt' ? encPlaintext : decCiphertextArmored}
                   onChange={(e) => {
                     if (action === 'encrypt') setEncPlaintext(e.target.value);
                     else setDecCiphertextArmored(e.target.value);
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    const f = e.dataTransfer.files?.[0];
+                    if (f) {
+                      const txt = await f.text();
+                      if (action === 'encrypt') setEncPlaintext(txt);
+                      else setDecCiphertextArmored(txt);
+                    }
                   }}
                   rows={4}
                   placeholder={action === 'encrypt' ? 'テキストを入力' : '-----BEGIN PGP MESSAGE----- を貼り付け'}

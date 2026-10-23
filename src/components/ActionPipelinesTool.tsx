@@ -3,11 +3,14 @@ import {
   deriveKeyFromPassword,
   computeHash,
   bufferToBase64,
+  encryptFileHybrid,
 } from '../utils/cryptoUtils';
 import { stripAllFileMetadata } from '../utils/metadataUtils';
 import { generateSelfDecryptingHtml } from '../utils/selfDecryptingPackage';
 import { createEncryptedZip } from '../utils/zipUtils';
 import { createTarArchive, compressTarToGz } from '../utils/tarUtils';
+import { FileLoaderButton } from './FileLoaderButton';
+import { KeyVaultFile } from '../types/crypto';
 import {
   Zap,
   ShieldCheck,
@@ -29,12 +32,18 @@ import {
   FileText,
   Clock,
   Sparkles,
+  Key,
+  Trash2,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
-type PipelineId = 'privacy-encrypt' | 'multi-share' | 'archive-pack';
+type PipelineId = 'privacy-encrypt' | 'multi-share' | 'archive-pack' | 'zip-aes-rsa';
 
-export const ActionPipelinesTool: React.FC = () => {
+interface Props {
+  vault?: KeyVaultFile;
+}
+
+export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
   const [activePipeline, setActivePipeline] = useState<PipelineId>('privacy-encrypt');
 
   // -------------------------------------------------------------
@@ -94,6 +103,28 @@ export const ActionPipelinesTool: React.FC = () => {
     size: number;
   } | null>(null);
   const [errorP3, setErrorP3] = useState('');
+
+  // -------------------------------------------------------------
+  // Pipeline 4: ZIP -> AES-256 -> AES Key RSA-OAEP Encrypt
+  // -------------------------------------------------------------
+  const [zipRsaFiles, setZipRsaFiles] = useState<File[]>([]);
+  const [zipRsaArchiveName, setZipRsaArchiveName] = useState('secure_archive');
+  const [zipRsaPublicKeyPem, setZipRsaPublicKeyPem] = useState('');
+  const [selectedVaultRsaKeyId, setSelectedVaultRsaKeyId] = useState('');
+  const [isProcessingP4, setIsProcessingP4] = useState(false);
+  const [stepP4, setStepP4] = useState('');
+  const [resultP4, setResultP4] = useState<{
+    downloadUrl: string;
+    filename: string;
+    sha256: string;
+    origSize: number;
+    zipSize: number;
+    encSize: number;
+    fileCount: number;
+  } | null>(null);
+  const [errorP4, setErrorP4] = useState('');
+
+  const rsaVaultKeys = vault?.keys.filter((k) => k.type === 'rsa-oaep' && !!k.publicKeyPem) || [];
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -288,6 +319,55 @@ export const ActionPipelinesTool: React.FC = () => {
     }
   };
 
+  // Pipeline 4 Handler: ZIP -> AES-256 -> AES Key RSA-OAEP
+  const handleRunZipAesRsa = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (zipRsaFiles.length === 0) return setErrorP4('暗号化するファイルを1つ以上選択してください');
+    if (!zipRsaPublicKeyPem.trim()) return setErrorP4('受取人のRSA公開鍵 PEM を指定してください');
+
+    setErrorP4('');
+    setResultP4(null);
+    setIsProcessingP4(true);
+
+    try {
+      setStepP4('1/4: 複数ファイルをZIPアーカイブに圧縮中...');
+      const zipBlob = await createEncryptedZip(zipRsaFiles, {});
+      const zipBuffer = await zipBlob.arrayBuffer();
+
+      setStepP4('2/4: AES-256 セッション鍵を生成し、ZIPデータを暗号化中...');
+      setStepP4('3/4: 受取人のRSA-OAEP公開鍵でセッション鍵を暗号化中...');
+      const cleanBaseName = zipRsaArchiveName.trim().replace(/\.[^/.]+$/, '') || 'secure_archive';
+      const innerFilename = `${cleanBaseName}.zip`;
+      const encryptedBuffer = await encryptFileHybrid(
+        zipBuffer,
+        innerFilename,
+        zipRsaPublicKeyPem.trim(),
+        'SHA-256'
+      );
+
+      setStepP4('4/4: SHA-256 整合性チェックサムを算出中...');
+      const hashRes = await computeHash(encryptedBuffer, 'SHA-256');
+
+      const finalBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
+      const outFilename = `${cleanBaseName}.zip.lcv`;
+
+      setResultP4({
+        downloadUrl: URL.createObjectURL(finalBlob),
+        filename: outFilename,
+        sha256: hashRes.hex,
+        origSize: zipRsaFiles.reduce((acc, f) => acc + f.size, 0),
+        zipSize: zipBuffer.byteLength,
+        encSize: finalBlob.size,
+        fileCount: zipRsaFiles.length,
+      });
+      setStepP4('完了しました');
+    } catch (err: any) {
+      setErrorP4(`パイプライン処理エラー: ${err.message}`);
+    } finally {
+      setIsProcessingP4(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -306,7 +386,7 @@ export const ActionPipelinesTool: React.FC = () => {
       </div>
 
       {/* Pipeline Navigation Tabs */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
         <button
           type="button"
           onClick={() => setActivePipeline('privacy-encrypt')}
@@ -369,6 +449,28 @@ export const ActionPipelinesTool: React.FC = () => {
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
               複数ファイルを tar.gz または ZIP にまとめてAES-256で安全に封印
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActivePipeline('zip-aes-rsa')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+            activePipeline === 'zip-aes-rsa'
+              ? 'bg-indigo-950/30 border-indigo-500 shadow-sm'
+              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="p-2 rounded-lg bg-cyan-500/20 text-cyan-400 shrink-0">
+            <Lock className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-xs text-slate-100 flex items-center gap-1.5">
+              <span>ZIP化 ＋ AES ＋ RSA暗号化</span>
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
+              複数ファイルをZIP化しAES-256暗号化、セッション鍵を受取人のRSA公開鍵で安全に封印
             </div>
           </div>
         </button>
@@ -822,6 +924,280 @@ export const ActionPipelinesTool: React.FC = () => {
             ) : (
               <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
                 <FolderArchive className="w-8 h-8 mx-auto text-slate-600" />
+                <div>左のパネルで実行してください</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline 4: ZIP + AES-256 + RSA-OAEP Hybrid Envelope Encryption */}
+      {activePipeline === 'zip-aes-rsa' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="p-3 bg-cyan-950/20 border border-cyan-800/40 rounded-lg space-y-1 text-cyan-200">
+              <div className="font-semibold flex items-center gap-1.5">
+                <Lock className="w-4 h-4 text-cyan-400" />
+                <span>ワークフロー概要</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                複数ファイルを1つのZIPアーカイブへ統合し、高速なワンタイムAES-256鍵で暗号化。その鍵を受取人のRSA-OAEP公開鍵で暗号化してカプセル化（LCV_ENC1コンテナ）します。大容量ファイルを安全かつ確実に受取人限定で送付できます。
+              </p>
+            </div>
+
+            <form onSubmit={handleRunZipAesRsa} className="space-y-4">
+              {/* File Selector */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  暗号化するファイル (複数選択可)
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      const files = Array.from(e.dataTransfer.files);
+                      setZipRsaFiles((prev) => [...prev, ...files]);
+                    }
+                  }}
+                  className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-3 text-center bg-slate-950/50"
+                >
+                  <input
+                    type="file"
+                    multiple
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const files = Array.from(e.target.files);
+                        setZipRsaFiles((prev) => [...prev, ...files]);
+                      }
+                    }}
+                    className="w-full text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-cyan-600 file:text-white hover:file:bg-cyan-500 cursor-pointer"
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">
+                    ここに複数のファイルをドラッグ＆ドロップして一括追加できます
+                  </p>
+                </div>
+
+                {zipRsaFiles.length > 0 && (
+                  <div className="mt-2.5 space-y-1.5 bg-slate-950 border border-slate-800 rounded-lg p-2.5 max-h-40 overflow-y-auto">
+                    <div className="flex items-center justify-between text-[11px] text-slate-400 pb-1 border-b border-slate-800">
+                      <span>追加済みファイル: <strong className="text-slate-200">{zipRsaFiles.length} 件</strong></span>
+                      <div className="flex items-center gap-2">
+                        <span>合計 {(zipRsaFiles.reduce((acc, f) => acc + f.size, 0) / 1024).toFixed(1)} KB</span>
+                        <button
+                          type="button"
+                          onClick={() => setZipRsaFiles([])}
+                          className="text-rose-400 hover:text-rose-300 text-[10px]"
+                        >
+                          全解除
+                        </button>
+                      </div>
+                    </div>
+                    {zipRsaFiles.map((file, idx) => (
+                      <div
+                        key={`${file.name}-${idx}`}
+                        className="flex items-center justify-between py-1 px-1.5 rounded hover:bg-slate-900 text-[11px]"
+                      >
+                        <span className="text-slate-200 truncate max-w-[240px]">{file.name}</span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-slate-400 text-[10px]">{(file.size / 1024).toFixed(1)} KB</span>
+                          <button
+                            type="button"
+                            onClick={() => setZipRsaFiles((prev) => prev.filter((_, i) => i !== idx))}
+                            className="text-slate-500 hover:text-rose-400 p-0.5"
+                            title="削除"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Archive Name */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  アーカイブ名 (拡張子不要)
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={zipRsaArchiveName}
+                    onChange={(e) => setZipRsaArchiveName(e.target.value)}
+                    placeholder="secure_archive"
+                    className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono focus:outline-none focus:border-cyan-500"
+                  />
+                  <span className="text-slate-400 text-xs font-mono shrink-0">.zip.lcv</span>
+                </div>
+              </div>
+
+              {/* Recipient Public Key */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>受取人のRSA公開鍵 (PEM形式)</span>
+                  </label>
+                  <FileLoaderButton
+                    onFileLoaded={(content) => {
+                      setZipRsaPublicKeyPem(content);
+                    }}
+                    label="公開鍵ファイルを読込"
+                    accept=".pem,.pub,.key,.txt"
+                    className="text-[11px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                  />
+                </div>
+
+                {rsaVaultKeys.length > 0 && (
+                  <div className="p-2 bg-slate-950/80 border border-slate-800 rounded-lg flex items-center gap-2 text-[11px]">
+                    <span className="text-slate-400 shrink-0">キー保管庫から選ぶ:</span>
+                    <select
+                      value={selectedVaultRsaKeyId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedVaultRsaKeyId(id);
+                        const k = rsaVaultKeys.find((item) => item.id === id);
+                        if (k?.publicKeyPem) setZipRsaPublicKeyPem(k.publicKeyPem);
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs focus:outline-none"
+                    >
+                      <option value="">選択してください...</option>
+                      {rsaVaultKeys.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.title} ({k.algorithmDetails?.modulusLength || 2048}bit)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <textarea
+                  value={zipRsaPublicKeyPem}
+                  onChange={(e) => setZipRsaPublicKeyPem(e.target.value)}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      const text = await e.dataTransfer.files[0].text();
+                      setZipRsaPublicKeyPem(text);
+                    }
+                  }}
+                  placeholder="-----BEGIN PUBLIC KEY-----&#10;受取人の公開鍵を貼り付けるか、ファイルをここにドロップ&#10;-----END PUBLIC KEY-----"
+                  rows={4}
+                  required
+                  className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono text-[11px] focus:outline-none focus:border-cyan-500 leading-tight"
+                />
+              </div>
+
+              {stepP4 && (
+                <div className="p-2.5 bg-cyan-950/30 border border-cyan-800/40 rounded-lg text-cyan-300 text-[11px] flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>{stepP4}</span>
+                </div>
+              )}
+
+              {errorP4 && (
+                <div className="p-2.5 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-[11px]">
+                  {errorP4}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isProcessingP4 || zipRsaFiles.length === 0}
+                className="w-full py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                {isProcessingP4 ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>処理中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Lock className="w-4 h-4" />
+                    <span>ZIP化 ＋ AES暗号化 ＋ RSA鍵封印を実行</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Result Card */}
+          <div className="md:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <h3 className="font-semibold text-slate-200 border-b border-slate-800 pb-2">
+              暗号化コンテナ生成結果
+            </h3>
+
+            {resultP4 ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-cyan-950/30 border border-cyan-800/60 rounded-lg text-cyan-300 space-y-1.5">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-cyan-400" />
+                    <span>暗号化コンテナが正常に作成されました</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-300 pt-1 border-t border-cyan-900/40 font-mono">
+                    <div>
+                      格納数: <strong className="text-slate-100">{resultP4.fileCount} ファイル</strong>
+                    </div>
+                    <div>
+                      元合計: {(resultP4.origSize / 1024).toFixed(1)} KB
+                    </div>
+                    <div>
+                      ZIP圧縮後: {(resultP4.zipSize / 1024).toFixed(1)} KB
+                    </div>
+                    <div>
+                      暗号化容量: {(resultP4.encSize / 1024).toFixed(1)} KB
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg space-y-1 font-mono text-[10px]">
+                  <div className="text-slate-400 font-sans text-xs flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Hash className="w-3 h-3 text-cyan-400" />
+                      <span>SHA-256 チェックサム:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(resultP4.sha256, 'zipRsaSha256')}
+                      className="text-cyan-400 hover:text-cyan-300 flex items-center gap-1"
+                    >
+                      {copiedKey === 'zipRsaSha256' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>コピー</span>
+                    </button>
+                  </div>
+                  <div className="text-cyan-300 break-all select-all">{resultP4.sha256}</div>
+                </div>
+
+                <a
+                  href={resultP4.downloadUrl}
+                  download={resultP4.filename}
+                  className="w-full py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>暗号化ファイル ({resultP4.filename}) を保存</span>
+                </a>
+
+                <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg text-[11px] text-slate-400 space-y-1">
+                  <div className="font-semibold text-slate-200">復号方法</div>
+                  <p className="leading-relaxed">
+                    受取人は「自動解析・復号」または「RSA暗号」タブにこのファイルをドラッグ＆ドロップし、対応するRSA秘密鍵を指定するだけで自動復号・ZIP展開が実行されます。
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
+                <Lock className="w-8 h-8 mx-auto text-slate-600" />
                 <div>左のパネルで実行してください</div>
               </div>
             )}

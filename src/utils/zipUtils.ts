@@ -42,8 +42,8 @@ export async function createEncryptedZip(
   const isZipCrypto = options.encryptionStrength === 'zipcrypto';
   const zipWriter = new ZipWriter(blobWriter, {
     password: options.password || undefined,
-    encryptionStrength: isZipCrypto ? undefined : 3, // 3 = AES-256 in zip.js
-    zipCrypto: isZipCrypto,
+    encryptionStrength: options.password ? (isZipCrypto ? undefined : 3) : undefined,
+    zipCrypto: options.password ? isZipCrypto : false,
   });
 
   const total = files.length;

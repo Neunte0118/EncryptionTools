@@ -471,7 +471,7 @@ export default function App() {
             />
           )}
           {activeTab === 'ring-signature' && <RingSignatureTool />}
-          {activeTab === 'action-pipeline' && <ActionPipelinesTool />}
+          {activeTab === 'action-pipeline' && <ActionPipelinesTool vault={vault} />}
         </main>
       </div>
 

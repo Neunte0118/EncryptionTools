@@ -2,6 +2,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   aesEncrypt,
   aesDecrypt,
+  aesEncryptAdvanced,
+  aesDecryptAdvanced,
+  AesCipherMode,
   stringToBuffer,
   bufferToString,
   base64ToBuffer,
@@ -44,6 +47,10 @@ export const AesTool: React.FC<Props> = ({
 }) => {
   const [action, setAction] = useState<'encrypt' | 'decrypt'>('encrypt');
   const [targetType, setTargetType] = useState<'text' | 'file'>('text');
+
+  // Mode & Key length state
+  const [aesMode, setAesMode] = useState<AesCipherMode>('AES-GCM');
+  const [aesKeyLength, setAesKeyLength] = useState<128 | 192 | 256>(256);
 
   // Key state
   const [keyInputType, setKeyInputType] = useState<'password' | 'raw' | 'vault'>('password');
@@ -102,26 +109,34 @@ export const AesTool: React.FC<Props> = ({
     rawB64: string,
     vaultKeyId: string
   ): Promise<Uint8Array> => {
+    const requiredBytes = aesKeyLength / 8;
     if (type === 'password') {
       if (!pass.trim()) throw new Error('パスワードを入力してください');
       const encoder = new TextEncoder();
       const passBuf = encoder.encode(pass.trim());
       const hash = await crypto.subtle.digest('SHA-256', passBuf);
-      return new Uint8Array(hash);
+      return new Uint8Array(hash.slice(0, requiredBytes));
     } else if (type === 'raw') {
       if (!rawB64.trim()) throw new Error('Base64 共通鍵を入力してください');
-      return base64ToBuffer(rawB64.trim()) as any;
+      const buf = new Uint8Array(base64ToBuffer(rawB64.trim()));
+      if (buf.length !== requiredBytes) {
+        // If provided key length doesn't match selected, slice or pad appropriately
+        if (buf.length > requiredBytes) return buf.slice(0, requiredBytes);
+        throw new Error(`指定の鍵長 (${aesKeyLength} bit / ${requiredBytes} バイト) に対し、入力された鍵は ${buf.length} バイトです`);
+      }
+      return buf;
     } else {
       const vk = aesVaultKeys.find((k) => k.id === vaultKeyId);
       if (!vk || !vk.rawKeyBase64) throw new Error('保管庫から有効なAESキーを選択してください');
-      return base64ToBuffer(vk.rawKeyBase64) as any;
+      const buf = new Uint8Array(base64ToBuffer(vk.rawKeyBase64));
+      return buf.slice(0, requiredBytes);
     }
   };
 
   const handleGenerateRawKey = () => {
-    const raw = new Uint8Array(32);
+    const raw = new Uint8Array(aesKeyLength / 8);
     crypto.getRandomValues(raw);
-    const b64 = bufferToBase64(raw as any);
+    const b64 = bufferToBase64(raw.buffer);
     setRawKeyBase64(b64);
   };
 
@@ -137,7 +152,7 @@ export const AesTool: React.FC<Props> = ({
     try {
       const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
       const plainBuf = stringToBuffer(plainText);
-      const encRes = await aesEncrypt(keyBuf as any, plainBuf as any);
+      const encRes = await aesEncryptAdvanced(keyBuf.buffer as ArrayBuffer, plainBuf, aesMode);
       setCipherText(encRes.combinedBase64);
     } catch (err: any) {
       setTextError(err.message || '暗号化エラー');
@@ -158,8 +173,8 @@ export const AesTool: React.FC<Props> = ({
     try {
       const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
       const cipherBuf = base64ToBuffer(cipherText.trim());
-      const decBuf = await aesDecrypt(keyBuf as any, cipherBuf as any);
-      setDecryptedText(bufferToString(decBuf as any));
+      const decBuf = await aesDecryptAdvanced(keyBuf.buffer as ArrayBuffer, cipherBuf, aesMode);
+      setDecryptedText(bufferToString(decBuf));
     } catch (err: any) {
       setTextError(`復号エラー: ${err.message}`);
     } finally {
@@ -204,7 +219,8 @@ export const AesTool: React.FC<Props> = ({
           outBuffer = await encryptFileAesPassword(selectedFile.buffer, selectedFile.name, password.trim());
         } else {
           const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
-          outBuffer = await encryptFileAesRaw(selectedFile.buffer, selectedFile.name, (keyBuf as any).buffer || keyBuf);
+          const rawKeyBuffer = keyBuf.buffer.slice(keyBuf.byteOffset, keyBuf.byteOffset + keyBuf.byteLength) as ArrayBuffer;
+          outBuffer = await encryptFileAesRaw(selectedFile.buffer, selectedFile.name, rawKeyBuffer);
         }
 
         const blob = new Blob([outBuffer], { type: 'application/octet-stream' });
@@ -220,7 +236,8 @@ export const AesTool: React.FC<Props> = ({
 
         if (meta?.mode === 'aes-raw' || keyInputType === 'raw' || keyInputType === 'vault') {
           const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
-          decrypted = await decryptFileAesRaw(selectedFile.buffer, (keyBuf as any).buffer || keyBuf);
+          const rawKeyBuffer = keyBuf.buffer.slice(keyBuf.byteOffset, keyBuf.byteOffset + keyBuf.byteLength) as ArrayBuffer;
+          decrypted = await decryptFileAesRaw(selectedFile.buffer, rawKeyBuffer);
         } else {
           if (!password.trim()) throw new Error('パスワードを入力してください');
           decrypted = await decryptFileAesPassword(selectedFile.buffer, password.trim());
@@ -251,11 +268,14 @@ export const AesTool: React.FC<Props> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">AES-256 GCM</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-mono font-medium">
-                NIST FIPS 197
+              <h2 className="text-lg font-bold text-slate-100">AES 暗号化スタジオ</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-medium">
+                {aesMode} ({aesKeyLength}bit)
               </span>
             </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              NIST FIPS 197 / SP 800-38 準拠の全AES規格（GCM / CBC / CTR 及び 128/192/256bit 鍵長）に対応
+            </p>
           </div>
         </div>
 
@@ -330,6 +350,105 @@ export const AesTool: React.FC<Props> = ({
             >
               <FileLock className="w-3.5 h-3.5" />
               <span>ファイル</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Mode & Specification Selection (GCM, CBC, CTR / 128, 192, 256) */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="text-xs font-semibold text-slate-200 flex items-center justify-between mb-1.5">
+            <span>暗号化規格・動作モード (AES Mode)</span>
+            <span className="text-[10px] text-slate-400 font-mono">NIST SP 800-38</span>
+          </label>
+          <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => setAesMode('AES-GCM')}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesMode === 'AES-GCM'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Galois/Counter Mode: 認証タグ(AEAD)により完全性と機密性を同時保証"
+            >
+              GCM (AEAD)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAesMode('AES-CBC')}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesMode === 'AES-CBC'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Cipher Block Chaining: 暗号ブロック連鎖 + PKCS#7パディング"
+            >
+              CBC (PKCS#7)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAesMode('AES-CTR')}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesMode === 'AES-CTR'
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+              title="Counter Mode: カウンタ値の暗号化によるストリーム型ブロック暗号"
+            >
+              CTR (カウンタ)
+            </button>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-slate-200 flex items-center justify-between mb-1.5">
+            <span>鍵長規格 (Key Length)</span>
+            <span className="text-[10px] text-slate-400 font-mono">FIPS 197</span>
+          </label>
+          <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
+            <button
+              type="button"
+              onClick={() => {
+                setAesKeyLength(256);
+                if (keyInputType === 'raw') handleGenerateRawKey();
+              }}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesKeyLength === 256
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              256 bit (最高強度)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAesKeyLength(192);
+                if (keyInputType === 'raw') handleGenerateRawKey();
+              }}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesKeyLength === 192
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              192 bit (標準)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAesKeyLength(128);
+                if (keyInputType === 'raw') handleGenerateRawKey();
+              }}
+              className={`py-1.5 px-2 rounded text-center transition-colors ${
+                aesKeyLength === 128
+                  ? 'bg-indigo-600 text-white font-bold'
+                  : 'text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              128 bit (軽量)
             </button>
           </div>
         </div>

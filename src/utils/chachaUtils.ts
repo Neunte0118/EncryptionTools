@@ -1,14 +1,25 @@
 /**
- * ChaCha20-Poly1305 AEAD Utility
- * IETF RFC 8439
+ * ChaCha20 / Salsa20 Family Cryptographic Utility
+ * - ChaCha20-Poly1305 (IETF RFC 8439 / 96-bit Nonce AEAD)
+ * - XChaCha20-Poly1305 (Extended 192-bit / 24-byte Nonce AEAD)
+ * - ChaCha20 Raw (RFC 8439 Stream Cipher without MAC)
+ * - XSalsa20-Poly1305 (NaCl / libsodium crypto_secretbox standard)
  */
 
-import { ChaCha20Poly1305 } from '@stablelib/chacha20poly1305';
-import { bufferToBase64, base64ToBuffer } from './cryptoUtils';
+import { chacha20poly1305, xchacha20poly1305, chacha20 } from '@noble/ciphers/chacha.js';
+import { xsalsa20poly1305 } from '@noble/ciphers/salsa.js';
+import { bufferToBase64, base64ToBuffer, bufferToHex } from './cryptoUtils';
+
+export type ChaChaVariant =
+  | 'chacha20-poly1305'
+  | 'xchacha20-poly1305'
+  | 'chacha20-raw'
+  | 'xsalsa20-poly1305';
 
 export interface ChaChaResult {
   nonceHex: string;
   ciphertextBase64: string;
+  variant: ChaChaVariant;
 }
 
 const CHACHA_FILE_MAGIC = new Uint8Array([0x43, 0x48, 0x41, 0x32, 0x30, 0x46, 0x49, 0x4c]); // CHA20FIL
@@ -36,30 +47,53 @@ async function deriveChaChaKey(password: string, salt: Uint8Array): Promise<Uint
 }
 
 /**
- * Encrypt text or bytes with password
+ * Encrypt text or bytes with password using selected variant
  */
 export async function chacha20EncryptWithPassword(
   plaintext: string | ArrayBuffer,
-  password: string
-): Promise<{ combinedBase64: string }> {
+  password: string,
+  variant: ChaChaVariant = 'chacha20-poly1305'
+): Promise<{ combinedBase64: string; nonceHex: string; variant: ChaChaVariant }> {
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const nonce = window.crypto.getRandomValues(new Uint8Array(12));
+  const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+  const nonce = window.crypto.getRandomValues(new Uint8Array(nonceLen));
   const keyBytes = await deriveChaChaKey(password, salt);
-  const cipher = new ChaCha20Poly1305(keyBytes);
 
   const plainBytes = typeof plaintext === 'string'
     ? new TextEncoder().encode(plaintext)
     : new Uint8Array(plaintext);
 
-  const encrypted = cipher.seal(nonce, plainBytes);
+  let encrypted: Uint8Array;
+  if (variant === 'xchacha20-poly1305') {
+    const cipher = xchacha20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  } else if (variant === 'chacha20-raw') {
+    encrypted = chacha20(keyBytes, nonce, plainBytes);
+  } else if (variant === 'xsalsa20-poly1305') {
+    const cipher = xsalsa20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  } else {
+    // Default RFC 8439 ChaCha20-Poly1305
+    const cipher = chacha20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  }
 
-  const combined = new Uint8Array(16 + 12 + encrypted.length);
-  combined.set(salt, 0);
-  combined.set(nonce, 16);
-  combined.set(encrypted, 28);
+  // Variant indicator: 0 = chacha20-poly1305, 1 = xchacha20-poly1305, 2 = chacha20-raw, 3 = xsalsa20-poly1305
+  let variantByte = 0;
+  if (variant === 'xchacha20-poly1305') variantByte = 1;
+  else if (variant === 'chacha20-raw') variantByte = 2;
+  else if (variant === 'xsalsa20-poly1305') variantByte = 3;
+
+  const combined = new Uint8Array(1 + 16 + nonce.length + encrypted.length);
+  combined[0] = variantByte;
+  combined.set(salt, 1);
+  combined.set(nonce, 17);
+  combined.set(encrypted, 17 + nonce.length);
 
   return {
     combinedBase64: bufferToBase64(combined.buffer as ArrayBuffer),
+    nonceHex: bufferToHex(nonce.buffer as ArrayBuffer),
+    variant,
   };
 }
 
@@ -68,23 +102,60 @@ export async function chacha20EncryptWithPassword(
  */
 export async function chacha20DecryptWithPassword(
   combinedBase64: string,
-  password: string
-): Promise<{ text?: string; buffer: ArrayBuffer }> {
+  password: string,
+  forceVariant?: ChaChaVariant
+): Promise<{ text?: string; buffer: ArrayBuffer; detectedVariant?: ChaChaVariant }> {
   const combined = new Uint8Array(base64ToBuffer(combinedBase64));
-  if (combined.length < 28 + 16) {
+  if (combined.length < 28) {
     throw new Error('暗号文の長さが不足しています');
   }
 
-  const salt = combined.subarray(0, 16);
-  const nonce = combined.subarray(16, 28);
-  const encrypted = combined.subarray(28);
+  let variant: ChaChaVariant = 'chacha20-poly1305';
+  let salt: Uint8Array;
+  let nonce: Uint8Array;
+  let encrypted: Uint8Array;
+
+  // Check if first byte is our variant tag
+  if (combined[0] <= 3 && combined.length >= 1 + 16 + 12) {
+    const variantTag = combined[0];
+    if (variantTag === 1) variant = 'xchacha20-poly1305';
+    else if (variantTag === 2) variant = 'chacha20-raw';
+    else if (variantTag === 3) variant = 'xsalsa20-poly1305';
+    else variant = 'chacha20-poly1305';
+
+    if (forceVariant) variant = forceVariant;
+    const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+
+    salt = combined.subarray(1, 17);
+    nonce = combined.subarray(17, 17 + nonceLen);
+    encrypted = combined.subarray(17 + nonceLen);
+  } else {
+    // Legacy format without variant tag: [16 bytes salt][12 bytes nonce][encrypted]
+    if (forceVariant) variant = forceVariant;
+    const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+    salt = combined.subarray(0, 16);
+    nonce = combined.subarray(16, 16 + nonceLen);
+    encrypted = combined.subarray(16 + nonceLen);
+  }
 
   const keyBytes = await deriveChaChaKey(password, salt);
-  const cipher = new ChaCha20Poly1305(keyBytes);
+  let decrypted: Uint8Array;
 
-  const decrypted = cipher.open(nonce, encrypted);
-  if (!decrypted) {
-    throw new Error('復号に失敗しました。パスワードが異なるか暗号データが改ざんされています');
+  try {
+    if (variant === 'xchacha20-poly1305') {
+      const cipher = xchacha20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else if (variant === 'chacha20-raw') {
+      decrypted = chacha20(keyBytes, nonce, encrypted);
+    } else if (variant === 'xsalsa20-poly1305') {
+      const cipher = xsalsa20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else {
+      const cipher = chacha20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    }
+  } catch (err: any) {
+    throw new Error('復号に失敗しました。パスワードが異なるか、選択した暗号規格が一致しません');
   }
 
   const arrayBuffer = decrypted.buffer.slice(
@@ -97,21 +168,21 @@ export async function chacha20DecryptWithPassword(
     text = new TextDecoder('utf-8', { fatal: true }).decode(arrayBuffer);
   } catch {}
 
-  return { text, buffer: arrayBuffer };
+  return { text, buffer: arrayBuffer, detectedVariant: variant };
 }
 
 /**
- * Encrypt file with ChaCha20-Poly1305
+ * Encrypt file with selected ChaCha/Salsa variant
  */
 export async function chacha20EncryptFile(
   fileBuffer: ArrayBuffer,
   fileName: string,
-  password: string
+  password: string,
+  variant: ChaChaVariant = 'chacha20-poly1305'
 ): Promise<ArrayBuffer> {
   const nameBytes = new TextEncoder().encode(fileName);
   const nameLen = nameBytes.length;
 
-  // Inner payload format: [2 bytes nameLen][nameBytes][fileBytes]
   const fileBytes = new Uint8Array(fileBuffer);
   const payload = new Uint8Array(2 + nameLen + fileBytes.length);
   payload[0] = (nameLen >> 8) & 0xff;
@@ -120,31 +191,49 @@ export async function chacha20EncryptFile(
   payload.set(fileBytes, 2 + nameLen);
 
   const salt = window.crypto.getRandomValues(new Uint8Array(16));
-  const nonce = window.crypto.getRandomValues(new Uint8Array(12));
+  const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+  const nonce = window.crypto.getRandomValues(new Uint8Array(nonceLen));
   const keyBytes = await deriveChaChaKey(password, salt);
-  const cipher = new ChaCha20Poly1305(keyBytes);
 
-  const encrypted = cipher.seal(nonce, payload);
+  let encrypted: Uint8Array;
+  if (variant === 'xchacha20-poly1305') {
+    const cipher = xchacha20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(payload);
+  } else if (variant === 'chacha20-raw') {
+    encrypted = chacha20(keyBytes, nonce, payload);
+  } else if (variant === 'xsalsa20-poly1305') {
+    const cipher = xsalsa20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(payload);
+  } else {
+    const cipher = chacha20poly1305(keyBytes, nonce);
+    encrypted = cipher.encrypt(payload);
+  }
 
-  // Outer container: [8 bytes magic][16 bytes salt][12 bytes nonce][encrypted payload]
-  const container = new Uint8Array(8 + 16 + 12 + encrypted.length);
+  let variantByte = 0;
+  if (variant === 'xchacha20-poly1305') variantByte = 1;
+  else if (variant === 'chacha20-raw') variantByte = 2;
+  else if (variant === 'xsalsa20-poly1305') variantByte = 3;
+
+  // Outer container: [8 bytes magic][1 byte variant][16 bytes salt][nonce bytes][encrypted payload]
+  const container = new Uint8Array(8 + 1 + 16 + nonce.length + encrypted.length);
   container.set(CHACHA_FILE_MAGIC, 0);
-  container.set(salt, 8);
-  container.set(nonce, 24);
-  container.set(encrypted, 36);
+  container[8] = variantByte;
+  container.set(salt, 9);
+  container.set(nonce, 25);
+  container.set(encrypted, 25 + nonce.length);
 
   return container.buffer as ArrayBuffer;
 }
 
 /**
- * Decrypt file with ChaCha20-Poly1305
+ * Decrypt file with ChaCha20 / XChaCha20 / Salsa
  */
 export async function chacha20DecryptFile(
   containerBuffer: ArrayBuffer,
   password: string
-): Promise<{ fileName: string; fileData: ArrayBuffer }> {
+): Promise<{ fileName: string; fileData: ArrayBuffer; variant: ChaChaVariant }> {
   const container = new Uint8Array(containerBuffer);
-  if (container.length < 36 + 16) {
+  if (container.length < 36) {
     throw new Error('無効なファイル形式です');
   }
 
@@ -157,30 +246,50 @@ export async function chacha20DecryptFile(
     }
   }
 
+  let variant: ChaChaVariant = 'chacha20-poly1305';
   let salt: Uint8Array;
   let nonce: Uint8Array;
   let encrypted: Uint8Array;
 
   if (isMagicMatch) {
-    salt = container.subarray(8, 24);
-    nonce = container.subarray(24, 36);
-    encrypted = container.subarray(36);
+    const variantByte = container[8];
+    if (variantByte === 1) variant = 'xchacha20-poly1305';
+    else if (variantByte === 2) variant = 'chacha20-raw';
+    else if (variantByte === 3) variant = 'xsalsa20-poly1305';
+    else variant = 'chacha20-poly1305';
+
+    const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+    salt = container.subarray(9, 25);
+    nonce = container.subarray(25, 25 + nonceLen);
+    encrypted = container.subarray(25 + nonceLen);
   } else {
-    // Fallback without 8-byte magic
+    // Legacy fallback without variant byte: [16 bytes salt][12 bytes nonce][encrypted]
     salt = container.subarray(0, 16);
     nonce = container.subarray(16, 28);
     encrypted = container.subarray(28);
   }
 
   const keyBytes = await deriveChaChaKey(password, salt);
-  const cipher = new ChaCha20Poly1305(keyBytes);
+  let decrypted: Uint8Array;
 
-  const decrypted = cipher.open(nonce, encrypted);
-  if (!decrypted) {
+  try {
+    if (variant === 'xchacha20-poly1305') {
+      const cipher = xchacha20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else if (variant === 'chacha20-raw') {
+      decrypted = chacha20(keyBytes, nonce, encrypted);
+    } else if (variant === 'xsalsa20-poly1305') {
+      const cipher = xsalsa20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else {
+      const cipher = chacha20poly1305(keyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    }
+  } catch {
     throw new Error('復号に失敗しました。パスワードが異なるか改ざんされています');
   }
 
-  if (isMagicMatch && decrypted.length >= 2) {
+  if (decrypted.length >= 2) {
     const nameLen = (decrypted[0] << 8) | decrypted[1];
     if (decrypted.length >= 2 + nameLen) {
       const nameBytes = decrypted.subarray(2, 2 + nameLen);
@@ -190,7 +299,7 @@ export async function chacha20DecryptFile(
         fileData.byteOffset,
         fileData.byteOffset + fileData.byteLength
       ) as ArrayBuffer;
-      return { fileName, fileData: outBuffer };
+      return { fileName, fileData: outBuffer, variant };
     }
   }
 
@@ -198,5 +307,5 @@ export async function chacha20DecryptFile(
     decrypted.byteOffset,
     decrypted.byteOffset + decrypted.byteLength
   ) as ArrayBuffer;
-  return { fileName: 'decrypted.bin', fileData: outBuffer };
+  return { fileName: 'decrypted.bin', fileData: outBuffer, variant };
 }

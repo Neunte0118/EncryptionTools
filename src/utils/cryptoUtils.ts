@@ -70,20 +70,77 @@ export function unwrapPem(pem: string): ArrayBuffer {
   return base64ToBuffer(base64);
 }
 
+import { sha224 } from '@noble/hashes/sha2.js';
+import { sha3_256, sha3_512, keccak_256 } from '@noble/hashes/sha3.js';
+import { blake3 } from '@noble/hashes/blake3.js';
+import { blake2b } from '@noble/hashes/blake2.js';
+import { ripemd160 } from '@noble/hashes/legacy.js';
+
 // --- Hash Functions ---
 
-export type HashAlgorithm = 'SHA-256' | 'SHA-512' | 'SHA-384' | 'SHA-1' | 'MD5';
+export type HashAlgorithm =
+  | 'SHA-256'
+  | 'SHA-512'
+  | 'SHA-384'
+  | 'SHA-224'
+  | 'SHA-1'
+  | 'MD5'
+  | 'SHA3-256'
+  | 'SHA3-512'
+  | 'Keccak-256'
+  | 'BLAKE3'
+  | 'BLAKE2b'
+  | 'RIPEMD-160';
 
 export async function computeHash(data: ArrayBuffer, algorithm: HashAlgorithm): Promise<{
   hex: string;
   base64: string;
 }> {
+  const u8 = new Uint8Array(data);
+
   if (algorithm === 'MD5') {
     return {
       hex: md5Hex(data),
       base64: md5Base64(data),
     };
   }
+
+  if (algorithm === 'SHA-224') {
+    const d = sha224(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'SHA3-256') {
+    const d = sha3_256(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'SHA3-512') {
+    const d = sha3_512(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'Keccak-256') {
+    const d = keccak_256(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'BLAKE3') {
+    const d = blake3(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'BLAKE2b') {
+    const d = blake2b(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  if (algorithm === 'RIPEMD-160') {
+    const d = ripemd160(u8);
+    return { hex: bufferToHex(d.buffer), base64: bufferToBase64(d.buffer) };
+  }
+
+  // Web Crypto subtle digest for native SHA-256, SHA-512, SHA-384, SHA-1
   const digest = await window.crypto.subtle.digest(algorithm, data);
   return {
     hex: bufferToHex(digest),
@@ -205,11 +262,13 @@ export async function importPrivateKey(
   return await window.crypto.subtle.importKey('pkcs8', der, algorithm, true, usages);
 }
 
-export async function importAesKey(raw: ArrayBuffer): Promise<CryptoKey> {
+export type AesCipherMode = 'AES-GCM' | 'AES-CBC' | 'AES-CTR';
+
+export async function importAesKey(raw: ArrayBuffer, mode: AesCipherMode = 'AES-GCM'): Promise<CryptoKey> {
   return await window.crypto.subtle.importKey(
     'raw',
     raw,
-    { name: 'AES-GCM' },
+    { name: mode },
     true,
     ['encrypt', 'decrypt']
   );
@@ -358,21 +417,28 @@ export async function rsaDecrypt(
   return await window.crypto.subtle.decrypt({ name: 'RSA-OAEP' }, key, ciphertext);
 }
 
-// --- AES-GCM Symmetric Encryption & Decryption ---
+// --- AES Symmetric Encryption & Decryption (GCM, CBC, CTR) ---
 
-export async function aesEncrypt(
+export async function aesEncryptAdvanced(
   rawKey: ArrayBuffer,
-  plaintext: ArrayBuffer
-): Promise<{ ivHex: string; ciphertextBase64: string; combinedBase64: string }> {
-  const key = await importAesKey(rawKey);
-  const iv = window.crypto.getRandomValues(new Uint8Array(12)); // 96-bit standard IV for GCM
-  const cipher = await window.crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    plaintext
-  );
+  plaintext: ArrayBuffer,
+  mode: AesCipherMode = 'AES-GCM'
+): Promise<{ ivHex: string; ciphertextBase64: string; combinedBase64: string; mode: AesCipherMode }> {
+  const key = await importAesKey(rawKey, mode);
+  const ivLen = mode === 'AES-GCM' ? 12 : 16;
+  const iv = window.crypto.getRandomValues(new Uint8Array(ivLen));
 
-  // Combine IV (12 bytes) + Ciphertext into a single payload
+  let algParams: AesGcmParams | AesCbcParams | AesCtrParams;
+  if (mode === 'AES-GCM') {
+    algParams = { name: 'AES-GCM', iv };
+  } else if (mode === 'AES-CBC') {
+    algParams = { name: 'AES-CBC', iv };
+  } else {
+    algParams = { name: 'AES-CTR', counter: iv, length: 64 };
+  }
+
+  const cipher = await window.crypto.subtle.encrypt(algParams, key, plaintext);
+
   const combined = new Uint8Array(iv.length + cipher.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(cipher), iv.length);
@@ -381,15 +447,18 @@ export async function aesEncrypt(
     ivHex: bufferToHex(iv.buffer),
     ciphertextBase64: bufferToBase64(cipher),
     combinedBase64: bufferToBase64(combined.buffer),
+    mode,
   };
 }
 
-export async function aesDecrypt(
+export async function aesDecryptAdvanced(
   rawKey: ArrayBuffer,
   ciphertextWithOrWithoutIv: ArrayBuffer,
+  mode: AesCipherMode = 'AES-GCM',
   explicitIv?: ArrayBuffer
 ): Promise<ArrayBuffer> {
-  const key = await importAesKey(rawKey);
+  const key = await importAesKey(rawKey, mode);
+  const ivLen = mode === 'AES-GCM' ? 12 : 16;
   let iv: ArrayBuffer;
   let cipherOnly: ArrayBuffer;
 
@@ -397,20 +466,39 @@ export async function aesDecrypt(
     iv = explicitIv;
     cipherOnly = ciphertextWithOrWithoutIv;
   } else {
-    // Treat first 12 bytes as IV
     const bytes = new Uint8Array(ciphertextWithOrWithoutIv);
-    if (bytes.length <= 12) {
-      throw new Error('Ciphertext too short to contain IV and data');
+    if (bytes.length <= ivLen) {
+      throw new Error(`暗号文が短すぎるため IV (${ivLen} バイト) を抽出できません`);
     }
-    iv = bytes.slice(0, 12).buffer;
-    cipherOnly = bytes.slice(12).buffer;
+    iv = bytes.slice(0, ivLen).buffer;
+    cipherOnly = bytes.slice(ivLen).buffer;
   }
 
-  return await window.crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    cipherOnly
-  );
+  let algParams: AesGcmParams | AesCbcParams | AesCtrParams;
+  if (mode === 'AES-GCM') {
+    algParams = { name: 'AES-GCM', iv };
+  } else if (mode === 'AES-CBC') {
+    algParams = { name: 'AES-CBC', iv };
+  } else {
+    algParams = { name: 'AES-CTR', counter: new Uint8Array(iv), length: 64 };
+  }
+
+  return await window.crypto.subtle.decrypt(algParams, key, cipherOnly);
+}
+
+export async function aesEncrypt(
+  rawKey: ArrayBuffer,
+  plaintext: ArrayBuffer
+): Promise<{ ivHex: string; ciphertextBase64: string; combinedBase64: string }> {
+  return await aesEncryptAdvanced(rawKey, plaintext, 'AES-GCM');
+}
+
+export async function aesDecrypt(
+  rawKey: ArrayBuffer,
+  ciphertextWithOrWithoutIv: ArrayBuffer,
+  explicitIv?: ArrayBuffer
+): Promise<ArrayBuffer> {
+  return await aesDecryptAdvanced(rawKey, ciphertextWithOrWithoutIv, 'AES-GCM', explicitIv);
 }
 
 // --- ECDH Shared Secret Derivation ---

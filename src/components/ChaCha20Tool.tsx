@@ -4,6 +4,7 @@ import {
   chacha20DecryptWithPassword,
   chacha20EncryptFile,
   chacha20DecryptFile,
+  ChaChaVariant,
 } from '../utils/chachaUtils';
 import { FileLoaderButton } from './FileLoaderButton';
 import {
@@ -24,6 +25,7 @@ import {
 export const ChaCha20Tool: React.FC = () => {
   const [action, setAction] = useState<'encrypt' | 'decrypt'>('encrypt');
   const [targetType, setTargetType] = useState<'text' | 'file'>('text');
+  const [variant, setVariant] = useState<ChaChaVariant>('chacha20-poly1305');
 
   // Text State
   const [password, setPassword] = useState('');
@@ -88,13 +90,13 @@ export const ChaCha20Tool: React.FC = () => {
         if (!plainText.trim()) {
           throw new Error('暗号化するテキストを入力してください');
         }
-        const res = await chacha20EncryptWithPassword(plainText, password.trim());
+        const res = await chacha20EncryptWithPassword(plainText, password.trim(), variant);
         setCipherText(res.combinedBase64);
       } else {
         if (!cipherText.trim()) {
           throw new Error('復号する暗号文 Base64 を入力してください');
         }
-        const res = await chacha20DecryptWithPassword(cipherText.trim(), password.trim());
+        const res = await chacha20DecryptWithPassword(cipherText.trim(), password.trim(), variant);
         setDecryptedText(res.text ?? '');
       }
     } catch (err: any) {
@@ -123,7 +125,8 @@ export const ChaCha20Tool: React.FC = () => {
         const outBuffer = await chacha20EncryptFile(
           selectedFile.buffer,
           selectedFile.name,
-          filePassword.trim()
+          filePassword.trim(),
+          variant
         );
         const outFilename = `${selectedFile.name}.chacha20`;
         const blob = new Blob([outBuffer], { type: 'application/octet-stream' });
@@ -163,11 +166,14 @@ export const ChaCha20Tool: React.FC = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">ChaCha20-Poly1305</h2>
+              <h2 className="text-lg font-bold text-slate-100">ChaCha20 / Salsa20 暗号化スタジオ</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 font-mono font-medium">
-                IETF RFC 8439
+                {variant.toUpperCase()}
               </span>
             </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              ChaCha20-Poly1305 (RFC 8439), XChaCha20 (Extended Nonce), Raw ChaCha20, XSalsa20 規格に対応
+            </p>
           </div>
         </div>
 
@@ -240,6 +246,67 @@ export const ChaCha20Tool: React.FC = () => {
               <span>ファイル</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Variant Selector */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-2">
+        <label className="text-xs font-semibold text-slate-200 flex items-center justify-between">
+          <span>暗号規格ファミリー (Cipher Specification)</span>
+          <span className="text-[10px] text-slate-400 font-mono">RFC 8439 / libsodium</span>
+        </label>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <button
+            type="button"
+            onClick={() => setVariant('chacha20-poly1305')}
+            className={`p-2.5 rounded-lg border text-left transition-all text-xs ${
+              variant === 'chacha20-poly1305'
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="font-bold text-slate-100">ChaCha20-Poly1305</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">IETF RFC 8439 (96bit Nonce)</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVariant('xchacha20-poly1305')}
+            className={`p-2.5 rounded-lg border text-left transition-all text-xs ${
+              variant === 'xchacha20-poly1305'
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="font-bold text-slate-100">XChaCha20-Poly1305</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">Extended 192bit Nonce (衝突耐性)</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVariant('chacha20-raw')}
+            className={`p-2.5 rounded-lg border text-left transition-all text-xs ${
+              variant === 'chacha20-raw'
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="font-bold text-slate-100">ChaCha20 (Raw)</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">MACなし純粋ストリーム暗号</div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setVariant('xsalsa20-poly1305')}
+            className={`p-2.5 rounded-lg border text-left transition-all text-xs ${
+              variant === 'xsalsa20-poly1305'
+                ? 'bg-emerald-950/60 border-emerald-500 text-emerald-200'
+                : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <div className="font-bold text-slate-100">XSalsa20-Poly1305</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">NaCl / libsodium secretbox互換</div>
+          </button>
         </div>
       </div>
 

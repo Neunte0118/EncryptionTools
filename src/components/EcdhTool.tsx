@@ -3,6 +3,12 @@ import {
   computeEcdhSharedSecret,
   generateKeyPairOrKey,
 } from '../utils/cryptoUtils';
+import {
+  generateX25519KeyPair,
+  computeX25519SharedSecret,
+  generateSecp256k1KeyPair,
+  computeSecp256k1SharedSecret,
+} from '../utils/curveUtils';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import { FileLoaderButton } from './FileLoaderButton';
 import {
@@ -19,6 +25,8 @@ import {
   Zap,
 } from 'lucide-react';
 
+export type EcdhCurveType = 'P-256' | 'P-384' | 'P-521' | 'X25519' | 'secp256k1';
+
 interface Props {
   vault: KeyVaultFile;
   selectedKey?: {
@@ -33,7 +41,7 @@ export const EcdhTool: React.FC<Props> = ({
   selectedKey,
   onClearSelectedKey,
 }) => {
-  const [curve, setCurve] = useState<'P-256' | 'P-384' | 'P-521'>('P-256');
+  const [curve, setCurve] = useState<EcdhCurveType>('P-256');
   const [selectedVaultKeyId, setSelectedVaultKeyId] = useState('');
   const [myPrivKeyPem, setMyPrivKeyPem] = useState('');
   const [myPubKeyPem, setMyPubKeyPem] = useState('');
@@ -72,12 +80,22 @@ export const EcdhTool: React.FC<Props> = ({
   const handleGenerateEphemeralKey = async () => {
     setErrorMsg('');
     try {
-      const kp = await generateKeyPairOrKey({
-        type: 'ecdh',
-        namedCurve: curve,
-      });
-      if (kp.privateKeyPem) setMyPrivKeyPem(kp.privateKeyPem);
-      if (kp.publicKeyPem) setMyPubKeyPem(kp.publicKeyPem);
+      if (curve === 'X25519') {
+        const kp = generateX25519KeyPair();
+        setMyPrivKeyPem(kp.privateKeyHex);
+        setMyPubKeyPem(kp.publicKeyHex);
+      } else if (curve === 'secp256k1') {
+        const kp = generateSecp256k1KeyPair();
+        setMyPrivKeyPem(kp.privateKeyHex);
+        setMyPubKeyPem(kp.publicKeyHex);
+      } else {
+        const kp = await generateKeyPairOrKey({
+          type: 'ecdh',
+          namedCurve: curve,
+        });
+        if (kp.privateKeyPem) setMyPrivKeyPem(kp.privateKeyPem);
+        if (kp.publicKeyPem) setMyPubKeyPem(kp.publicKeyPem);
+      }
     } catch (err: any) {
       setErrorMsg(`鍵ペア生成エラー: ${err.message}`);
     }
@@ -90,32 +108,42 @@ export const EcdhTool: React.FC<Props> = ({
     setDerivedKeyBase64('');
 
     if (!myPrivKeyPem.trim() || !peerPubKeyPem.trim()) {
-      setErrorMsg('あなたの秘密鍵 (PEM) と相手の公開鍵 (PEM) の両方を入力してください');
+      setErrorMsg('あなたの秘密鍵と相手の公開鍵の両方を入力してください');
       return;
     }
 
     setIsDeriving(true);
     try {
-      const res = await computeEcdhSharedSecret(
-        myPrivKeyPem.trim(),
-        peerPubKeyPem.trim(),
-        curve
-      );
-      setSharedSecretHex(res.secretHex);
+      if (curve === 'X25519') {
+        const res = computeX25519SharedSecret(myPrivKeyPem.trim(), peerPubKeyPem.trim());
+        setSharedSecretHex(res.secretHex);
+        setDerivedKeyBase64(res.derivedKeyBase64);
+      } else if (curve === 'secp256k1') {
+        const res = computeSecp256k1SharedSecret(myPrivKeyPem.trim(), peerPubKeyPem.trim());
+        setSharedSecretHex(res.secretHex);
+        setDerivedKeyBase64(res.derivedKeyBase64);
+      } else {
+        const res = await computeEcdhSharedSecret(
+          myPrivKeyPem.trim(),
+          peerPubKeyPem.trim(),
+          curve
+        );
+        setSharedSecretHex(res.secretHex);
 
-      // Derive standard 256-bit AES symmetric key using SHA-256
-      const secretBytes = new Uint8Array(
-        res.secretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
-      );
-      const hashBuf = await crypto.subtle.digest('SHA-256', secretBytes);
-      let binary = '';
-      const bytes = new Uint8Array(hashBuf);
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
+        // Derive standard 256-bit AES symmetric key using SHA-256
+        const secretBytes = new Uint8Array(
+          res.secretHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+        );
+        const hashBuf = await crypto.subtle.digest('SHA-256', secretBytes);
+        let binary = '';
+        const bytes = new Uint8Array(hashBuf);
+        for (let i = 0; i < bytes.byteLength; i++) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        setDerivedKeyBase64(btoa(binary));
       }
-      setDerivedKeyBase64(btoa(binary));
     } catch (err: any) {
-      setErrorMsg(`ECDH共有秘密の計算エラー: ${err.message} (曲線の種類やPEM形式が相手と一致しているか確認してください)`);
+      setErrorMsg(`ECDH共有秘密の計算エラー: ${err.message} (鍵の曲線やフォーマットが一致しているか確認してください)`);
     } finally {
       setIsDeriving(false);
     }
@@ -131,28 +159,40 @@ export const EcdhTool: React.FC<Props> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">ECDH (Diffie-Hellman鍵共有)</h2>
+              <h2 className="text-lg font-bold text-slate-100">ECDH (鍵共有 / Diffie-Hellman 全規格網羅)</h2>
               <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-mono font-medium">
-                Elliptic Curve Diffie-Hellman
+                NIST / RFC 7748 / SECG
               </span>
             </div>
             <p className="text-xs text-slate-400">
-              盗聴されている通信路でも、自身の秘密鍵と相手の公開鍵を掛け合わせることで、同一の共通暗号鍵を安全に導出
+              盗聴路でも安全に秘密を共有。NIST規格に加え、WireGuard/Signalで標準のX25519、ビットコイン等のsecp256k1を完全実装。
             </p>
           </div>
         </div>
 
         {/* Curve Selector */}
         <div className="flex items-center gap-2 bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 shrink-0 text-xs">
-          <span className="text-slate-400 font-semibold">曲線:</span>
+          <span className="text-slate-400 font-semibold">曲線規格:</span>
           <select
             value={curve}
-            onChange={(e) => setCurve(e.target.value as any)}
+            onChange={(e) => {
+              setCurve(e.target.value as EcdhCurveType);
+              setSharedSecretHex('');
+              setDerivedKeyBase64('');
+            }}
             className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-cyan-300 font-mono text-xs focus:outline-none focus:border-cyan-500"
           >
-            <option value="P-256">NIST P-256 (secp256r1)</option>
-            <option value="P-384">NIST P-384 (secp384r1)</option>
-            <option value="P-521">NIST P-521</option>
+            <optgroup label="RFC 7748 (Montgomery 現代標準)">
+              <option value="X25519">X25519 (Curve25519 / TLS 1.3 / Signal)</option>
+            </optgroup>
+            <optgroup label="SECG SEC 2 (暗号資産 / Web3)">
+              <option value="secp256k1">secp256k1 (Bitcoin / Ethereum / Nostr)</option>
+            </optgroup>
+            <optgroup label="NIST SP 800-56A (Weierstrass)">
+              <option value="P-256">NIST P-256 (prime256v1 / secp256r1)</option>
+              <option value="P-384">NIST P-384 (secp384r1)</option>
+              <option value="P-521">NIST P-521 (secp521r1)</option>
+            </optgroup>
           </select>
         </div>
       </div>
@@ -164,7 +204,7 @@ export const EcdhTool: React.FC<Props> = ({
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <h3 className="font-bold text-slate-200 text-xs flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-cyan-400" />
-              <span>1. あなたの秘密鍵 &amp; 公開鍵</span>
+              <span>1. あなたの秘密鍵 &amp; 公開鍵 ({curve})</span>
             </h3>
             <button
               type="button"
@@ -176,7 +216,7 @@ export const EcdhTool: React.FC<Props> = ({
             </button>
           </div>
 
-          {ecdhVaultKeys.length > 0 && (
+          {ecdhVaultKeys.length > 0 && (curve === 'P-256' || curve === 'P-384' || curve === 'P-521') && (
             <div>
               <select
                 value={selectedVaultKeyId}
@@ -202,12 +242,14 @@ export const EcdhTool: React.FC<Props> = ({
 
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] font-semibold text-slate-300">あなたの秘密鍵 (PEM)</label>
+              <label className="text-[11px] font-semibold text-slate-300">
+                あなたの秘密鍵 {curve === 'X25519' || curve === 'secp256k1' ? '(Hex / Base64 / PEM)' : '(PEM)'}
+              </label>
               <div className="flex items-center gap-2">
                 <FileLoaderButton
                   label="秘密鍵読込"
                   onFileLoaded={(content) => setMyPrivKeyPem(content)}
-                  title="秘密鍵ファイル (.pem, .key) を選択またはドロップ"
+                  title="秘密鍵ファイル (.pem, .key, .txt) を選択またはドロップ"
                 />
                 <button
                   type="button"
@@ -229,7 +271,11 @@ export const EcdhTool: React.FC<Props> = ({
                 if (f) setMyPrivKeyPem(await f.text());
               }}
               rows={4}
-              placeholder="-----BEGIN PRIVATE KEY-----&#10;...&#10;-----END PRIVATE KEY-----"
+              placeholder={
+                curve === 'X25519' || curve === 'secp256k1'
+                  ? '32バイト秘密鍵 (Hex または Base64)'
+                  : '-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----'
+              }
               className={`w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500 ${
                 !isPrivRevealed ? 'filter blur-[3px] focus:filter-none transition-all' : ''
               }`}
@@ -264,12 +310,12 @@ export const EcdhTool: React.FC<Props> = ({
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <h3 className="font-bold text-slate-200 text-xs flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>2. 通信相手の公開鍵 (Peer Public Key)</span>
+              <span>2. 通信相手の公開鍵 (Peer Public Key - {curve})</span>
             </h3>
             <FileLoaderButton
               label="相手公開鍵読込"
               onFileLoaded={(content) => setPeerPubKeyPem(content)}
-              title="相手の公開鍵ファイル (.pem, .pub) を選択またはドロップ"
+              title="相手の公開鍵ファイル (.pem, .pub, .txt) を選択またはドロップ"
             />
           </div>
 
@@ -284,7 +330,13 @@ export const EcdhTool: React.FC<Props> = ({
                 if (f) setPeerPubKeyPem(await f.text());
               }}
               rows={6}
-              placeholder="-----BEGIN PUBLIC KEY-----&#10;...&#10;-----END PUBLIC KEY-----"
+              placeholder={
+                curve === 'X25519'
+                  ? '相手の32バイト公開鍵 (Hex または Base64)'
+                  : curve === 'secp256k1'
+                  ? '相手の33バイト圧縮公開鍵または65バイト非圧縮公開鍵 (Hex または Base64)'
+                  : '-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----'
+              }
               className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-cyan-500"
             />
           </div>
@@ -302,7 +354,7 @@ export const EcdhTool: React.FC<Props> = ({
             className="w-full py-2.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
           >
             <Key className="w-4 h-4" />
-            <span>ECDH 共有秘密 (Shared Secret) を導出</span>
+            <span>{curve} 共有秘密 (Shared Secret) を導出</span>
           </button>
         </div>
       </div>
@@ -312,7 +364,7 @@ export const EcdhTool: React.FC<Props> = ({
         <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-5 space-y-4">
           <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold">
             <CheckCircle2 className="w-4 h-4" />
-            <span>ECDH 共有秘密の計算に成功しました！通信相手の側でも全く同一の値が算出されます。</span>
+            <span>{curve} 共有秘密の導出に成功しました！通信相手の側でも全く同一の値が算出されます。</span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -335,7 +387,7 @@ export const EcdhTool: React.FC<Props> = ({
 
             <div className="p-4 bg-slate-950 rounded-xl border border-slate-800 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-semibold text-slate-300">AES-256-GCM 共通暗号鍵 (SHA-256 Base64)</span>
+                <span className="text-[11px] font-semibold text-slate-300">AES-256 共通暗号鍵 (SHA-256 Base64)</span>
                 <button
                   type="button"
                   onClick={() => handleCopy(derivedKeyBase64, 'aesKey')}
@@ -349,7 +401,7 @@ export const EcdhTool: React.FC<Props> = ({
                 {derivedKeyBase64}
               </div>
               <div className="text-[10px] text-slate-500">
-                この共通鍵をコピーして「AES-256」ツールの生鍵入力に貼り付けることで、エンドツーエンド暗号化通信が行えます。
+                この共通鍵をコピーして「AES-256」ツールの生鍵入力に貼り付けることで、エンドツーエンド暗号化が行えます。
               </div>
             </div>
           </div>

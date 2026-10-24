@@ -4,6 +4,7 @@ import {
   decryptFileAesPassword,
   decryptFileAesRaw,
   decryptFileHybrid,
+  verifyData,
   base64ToBuffer,
   bufferToBase64,
   bufferToString,
@@ -727,16 +728,65 @@ export async function autoDecryptFiles(
       }
 
       if (decrypted) {
-        results.push({
-          id: target.id,
-          sourceFileNames: [target.name],
-          algorithm: 'RSA-OAEP + AES-GCM ハイブリッド暗号',
-          status: 'success',
-          outputFileName: decrypted.filename,
-          outputSize: decrypted.fileData.byteLength,
-          outputBuffer: decrypted.fileData,
-          details: 'RSA秘密鍵によりセッション鍵を復号し、本体データを抽出成功',
-        });
+        // Check if payload is a signed envelope (Sign-then-Encrypt)
+        let isSignedEnvelope = false;
+        try {
+          const text = new TextDecoder('utf-8', { fatal: true }).decode(decrypted.fileData);
+          if (text.startsWith('{"type":"lcv-signed-envelope-v1"')) {
+            const parsed = JSON.parse(text);
+            if (parsed.type === 'lcv-signed-envelope-v1' && parsed.payloadBase64) {
+              const payloadBuf = base64ToBuffer(parsed.payloadBase64);
+              let isValid = false;
+              let sigError = '';
+
+              if (parsed.signature && parsed.signerPublicKeyPem) {
+                try {
+                  isValid = await verifyData({
+                    type: parsed.signatureType || 'rsa-pss',
+                    hash: parsed.hashAlgorithm || 'SHA-256',
+                    namedCurve: 'P-256',
+                    publicKeyPem: parsed.signerPublicKeyPem,
+                    data: payloadBuf,
+                    signature: base64ToBuffer(parsed.signature),
+                  });
+                } catch (e: any) {
+                  sigError = e.message;
+                }
+              }
+
+              results.push({
+                id: target.id,
+                sourceFileNames: [target.name],
+                algorithm: `署名付きハイブリッド暗号 (${isValid ? '署名真正' : '署名未検証'})`,
+                status: 'success',
+                outputFileName: parsed.originalFileName || decrypted.filename,
+                outputSize: payloadBuf.byteLength,
+                outputBuffer: payloadBuf,
+                details: isValid
+                  ? `送信者の電子署名 (${(parsed.signatureType || 'RSA-PSS').toUpperCase()}) を検証完了。真正な作成者による暗号化ファイルです。`
+                  : sigError
+                  ? `署名検証エラー: ${sigError}`
+                  : '署名付きエンベロープを展開しました。',
+              });
+              isSignedEnvelope = true;
+            }
+          }
+        } catch {
+          // not a JSON envelope, proceed as raw decrypted file
+        }
+
+        if (!isSignedEnvelope) {
+          results.push({
+            id: target.id,
+            sourceFileNames: [target.name],
+            algorithm: 'RSA-OAEP + AES-GCM ハイブリッド暗号',
+            status: 'success',
+            outputFileName: decrypted.filename,
+            outputSize: decrypted.fileData.byteLength,
+            outputBuffer: decrypted.fileData,
+            details: 'RSA秘密鍵によりセッション鍵を復号し、本体データを抽出成功',
+          });
+        }
       } else {
         results.push({
           id: target.id,

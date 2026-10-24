@@ -3,12 +3,19 @@ import {
   deriveKeyFromPassword,
   computeHash,
   bufferToBase64,
+  bufferToHex,
+  base64ToBuffer,
+  hexToBuffer,
   encryptFileHybrid,
+  encryptFileAesRaw,
+  signData,
 } from '../utils/cryptoUtils';
 import { stripAllFileMetadata } from '../utils/metadataUtils';
 import { generateSelfDecryptingHtml } from '../utils/selfDecryptingPackage';
 import { createEncryptedZip } from '../utils/zipUtils';
 import { createTarArchive, compressTarToGz } from '../utils/tarUtils';
+import { splitSecret, ShamirShare } from '../utils/shamirUtils';
+import { encodeSteganography, calculateImageCapacity, formatBytes } from '../utils/steganographyUtils';
 import { FileLoaderButton } from './FileLoaderButton';
 import { KeyVaultFile } from '../types/crypto';
 import {
@@ -34,10 +41,20 @@ import {
   Sparkles,
   Key,
   Trash2,
+  FileSignature,
+  Share2,
+  Image as ImageIcon,
 } from 'lucide-react';
 import QRCode from 'qrcode';
 
-type PipelineId = 'privacy-encrypt' | 'multi-share' | 'archive-pack' | 'zip-aes-rsa';
+type PipelineId =
+  | 'privacy-encrypt'
+  | 'multi-share'
+  | 'archive-pack'
+  | 'zip-aes-rsa'
+  | 'sign-encrypt'
+  | 'shamir-encrypt'
+  | 'stego-encrypt';
 
 interface Props {
   vault?: KeyVaultFile;
@@ -125,6 +142,72 @@ export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
   const [errorP4, setErrorP4] = useState('');
 
   const rsaVaultKeys = vault?.keys.filter((k) => k.type === 'rsa-oaep' && !!k.publicKeyPem) || [];
+  const signingVaultKeys = vault?.keys.filter((k) => (k.type === 'rsa-pss' || k.type === 'ecdsa') && !!k.privateKeyPem) || [];
+
+  // -------------------------------------------------------------
+  // Pipeline 5: Sign + Hybrid Encrypt (Sign-then-Encrypt)
+  // -------------------------------------------------------------
+  const [signEncryptFile, setSignEncryptFile] = useState<File | null>(null);
+  const [senderSigType, setSenderSigType] = useState<'rsa-pss' | 'ecdsa'>('rsa-pss');
+  const [senderPrivateKeyPem, setSenderPrivateKeyPem] = useState('');
+  const [senderPublicKeyPem, setSenderPublicKeyPem] = useState('');
+  const [selectedVaultSignKeyId, setSelectedVaultSignKeyId] = useState('');
+  const [recipientHybridPublicKeyPem, setRecipientHybridPublicKeyPem] = useState('');
+  const [selectedVaultRecipientKeyId, setSelectedVaultRecipientKeyId] = useState('');
+  const [isProcessingP5, setIsProcessingP5] = useState(false);
+  const [stepP5, setStepP5] = useState('');
+  const [resultP5, setResultP5] = useState<{
+    downloadUrl: string;
+    filename: string;
+    sha256: string;
+    signatureBase64: string;
+    origSize: number;
+    encSize: number;
+    sigType: string;
+  } | null>(null);
+  const [errorP5, setErrorP5] = useState('');
+
+  // -------------------------------------------------------------
+  // Pipeline 6: Shamir Secret Sharing + AES File Encryption
+  // -------------------------------------------------------------
+  const [shamirFile, setShamirFile] = useState<File | null>(null);
+  const [shamirK, setShamirK] = useState(3);
+  const [shamirN, setShamirN] = useState(5);
+  const [isProcessingP6, setIsProcessingP6] = useState(false);
+  const [stepP6, setStepP6] = useState('');
+  const [resultP6, setResultP6] = useState<{
+    encFileUrl: string;
+    encFilename: string;
+    encSize: number;
+    sha256: string;
+    rawKeyHex: string;
+    shares: ShamirShare[];
+    zipSharesUrl: string;
+    zipSharesFilename: string;
+  } | null>(null);
+  const [activeShareQrIndex, setActiveShareQrIndex] = useState<number | null>(null);
+  const [shareQrDataUrls, setShareQrDataUrls] = useState<Record<number, string>>({});
+  const [errorP6, setErrorP6] = useState('');
+
+  // -------------------------------------------------------------
+  // Pipeline 7: Encrypt + Steganography Covert Transport
+  // -------------------------------------------------------------
+  const [stegoSecretFile, setStegoSecretFile] = useState<File | null>(null);
+  const [stegoCarrierFile, setStegoCarrierFile] = useState<File | null>(null);
+  const [stegoCarrierPreviewUrl, setStegoCarrierPreviewUrl] = useState<string | null>(null);
+  const [stegoCarrierCap, setStegoCarrierCap] = useState<{ width: number; height: number; maxBytes: number; formattedMaxCapacity: string } | null>(null);
+  const [stegoPassword, setStegoPassword] = useState('');
+  const [showStegoPassword, setShowStegoPassword] = useState(false);
+  const [isProcessingP7, setIsProcessingP7] = useState(false);
+  const [stepP7, setStepP7] = useState('');
+  const [resultP7, setResultP7] = useState<{
+    downloadUrl: string;
+    filename: string;
+    capacityUsedPercent: number;
+    origFileSize: number;
+    carrierDimensions: string;
+  } | null>(null);
+  const [errorP7, setErrorP7] = useState('');
 
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
@@ -368,6 +451,248 @@ export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
     }
   };
 
+  // -------------------------------------------------------------
+  // Pipeline 5 Handler: Sign + Hybrid Encrypt (Sign-then-Encrypt)
+  // -------------------------------------------------------------
+  const handleRunSignEncrypt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signEncryptFile) return setErrorP5('暗号化するファイルを選択してください');
+    if (!senderPrivateKeyPem.trim()) return setErrorP5('送信者の署名用秘密鍵 (PEM) を入力してください');
+    if (!recipientHybridPublicKeyPem.trim()) return setErrorP5('受取人のRSA公開鍵 (PEM) を入力してください');
+
+    setErrorP5('');
+    setResultP5(null);
+    setIsProcessingP5(true);
+
+    try {
+      setStepP5('1/4: ファイルを読み込み、送信者秘密鍵でデジタル署名を生成中...');
+      const fileBuffer = await signEncryptFile.arrayBuffer();
+
+      const sigRes = await signData({
+        type: senderSigType,
+        hash: 'SHA-256',
+        namedCurve: 'P-256',
+        privateKeyPem: senderPrivateKeyPem.trim(),
+        data: fileBuffer,
+      });
+
+      setStepP5('2/4: 署名メタデータと平文を署名付きエンベロープに統合中...');
+      const envelope = {
+        type: 'lcv-signed-envelope-v1',
+        originalFileName: signEncryptFile.name,
+        originalFileSize: signEncryptFile.size,
+        signature: sigRes.base64,
+        signatureType: senderSigType,
+        hashAlgorithm: 'SHA-256',
+        signerPublicKeyPem: senderPublicKeyPem.trim(),
+        payloadBase64: bufferToBase64(fileBuffer),
+        signedAt: new Date().toISOString(),
+      };
+      const envelopeBytes = new TextEncoder().encode(JSON.stringify(envelope));
+
+      setStepP5('3/4: ワンタイムAES鍵を生成し、受取人RSA公開鍵でハイブリッド暗号化中...');
+      const encryptedBuffer = await encryptFileHybrid(
+        envelopeBytes.buffer as ArrayBuffer,
+        `${signEncryptFile.name}.signed.lcv`,
+        recipientHybridPublicKeyPem.trim(),
+        'SHA-256'
+      );
+
+      setStepP5('4/4: 改竄検知用 SHA-256 チェックサムを算出中...');
+      const hashRes = await computeHash(encryptedBuffer, 'SHA-256');
+
+      const finalBlob = new Blob([encryptedBuffer], { type: 'application/octet-stream' });
+      const outFilename = `${signEncryptFile.name}.signed.lcv`;
+
+      setResultP5({
+        downloadUrl: URL.createObjectURL(finalBlob),
+        filename: outFilename,
+        sha256: hashRes.hex,
+        signatureBase64: sigRes.base64,
+        origSize: signEncryptFile.size,
+        encSize: finalBlob.size,
+        sigType: senderSigType.toUpperCase(),
+      });
+      setStepP5('完了しました');
+    } catch (err: any) {
+      setErrorP5(`パイプライン処理エラー: ${err.message}`);
+    } finally {
+      setIsProcessingP5(false);
+    }
+  };
+
+  // -------------------------------------------------------------
+  // Pipeline 6 Handler: Shamir Secret Sharing + AES File Encryption
+  // -------------------------------------------------------------
+  const handleRunShamirEncrypt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!shamirFile) return setErrorP6('暗号化するファイルを選択してください');
+    if (shamirK < 2 || shamirN < shamirK) {
+      return setErrorP6('閾値 k は 2 以上、総数 n は k 以上である必要があります');
+    }
+
+    setErrorP6('');
+    setResultP6(null);
+    setIsProcessingP6(true);
+
+    try {
+      setStepP6('1/4: 暗号論的疑似乱数により256bit AES共通鍵を生成中...');
+      const rawKeyBytes = window.crypto.getRandomValues(new Uint8Array(32));
+      const rawKeyHex = bufferToHex(rawKeyBytes.buffer);
+
+      setStepP6('2/4: 生成したAES-256鍵でファイルを暗号化中...');
+      const fileBuffer = await shamirFile.arrayBuffer();
+      const encBuffer = await encryptFileAesRaw(fileBuffer, shamirFile.name, rawKeyBytes.buffer);
+      const hashRes = await computeHash(encBuffer, 'SHA-256');
+
+      setStepP6(`3/4: シャミア秘密分散法により鍵を ${shamirN} 個のシェアに分割中 (閾値: ${shamirK})...`);
+      const keyTextBytes = new TextEncoder().encode(rawKeyHex);
+      const shares = splitSecret(keyTextBytes, shamirK, shamirN, {
+        isText: true,
+        filename: 'aes256_key.txt',
+      });
+
+      setStepP6('4/4: シェアファイル群と一括ZIPアーカイブを生成中...');
+      const shareFiles: File[] = shares.map((s) => {
+        const shareContent = `=== LOCAL CRYPTO VAULT - SHAMIR KEY SHARE (${s.x}/${s.n}) ===\n閾値 (k): ${s.k}\n総シェア数 (n): ${s.n}\nシェア番号: ${s.x}\n対象暗号ファイル: ${shamirFile.name}.aes.lcv\nCRC32チェックサム: ${s.checksum.toString(16)}\n\n${s.armoredText}\n\n[復元手順]\n任意の ${s.k} 個のシェアを Local Crypto Vault の「Shamir秘密分散」または「自動解析・復号」ツールに入力すると、AES暗号化鍵が即座に復元され、ファイルが解凍されます。\n`;
+        return new File([shareContent], `share_${s.x}_of_${s.n}.txt`, { type: 'text/plain;charset=utf-8' });
+      });
+
+      const zipBlob = await createEncryptedZip(shareFiles, {});
+      const encBlob = new Blob([encBuffer], { type: 'application/octet-stream' });
+      const encFilename = `${shamirFile.name}.aes.lcv`;
+
+      // Generate QR codes for quick view
+      const qrMap: Record<number, string> = {};
+      for (const s of shares.slice(0, 5)) {
+        try {
+          qrMap[s.x] = await QRCode.toDataURL(s.formattedText, { width: 220, margin: 1 });
+        } catch {}
+      }
+      setShareQrDataUrls(qrMap);
+
+      setResultP6({
+        encFileUrl: URL.createObjectURL(encBlob),
+        encFilename,
+        encSize: encBlob.size,
+        sha256: hashRes.hex,
+        rawKeyHex,
+        shares,
+        zipSharesUrl: URL.createObjectURL(zipBlob),
+        zipSharesFilename: `shares_${shamirK}_of_${shamirN}.zip`,
+      });
+      setStepP6('完了しました');
+    } catch (err: any) {
+      setErrorP6(`パイプライン処理エラー: ${err.message}`);
+    } finally {
+      setIsProcessingP6(false);
+    }
+  };
+
+  // Helper to generate a default cover image for Steganography
+  const handleGenerateDefaultCarrier = async () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = 900;
+    canvas.height = 650;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const grad = ctx.createLinearGradient(0, 0, 900, 650);
+    grad.addColorStop(0, '#0f172a');
+    grad.addColorStop(0.4, '#1e1b4b');
+    grad.addColorStop(0.8, '#1e293b');
+    grad.addColorStop(1, '#020617');
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, 900, 650);
+
+    for (let i = 0; i < 40; i++) {
+      ctx.fillStyle = `rgba(${60 + Math.random() * 120}, ${90 + Math.random() * 100}, ${200 + Math.random() * 55}, ${0.1 + Math.random() * 0.15})`;
+      ctx.beginPath();
+      ctx.arc(Math.random() * 900, Math.random() * 650, 30 + Math.random() * 120, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+    const generatedFile = new File([blob], 'stealth_carrier.png', { type: 'image/png' });
+    setStegoCarrierFile(generatedFile);
+    setStegoCarrierPreviewUrl(URL.createObjectURL(generatedFile));
+    setStegoCarrierCap(calculateImageCapacity(900, 650));
+  };
+
+  // -------------------------------------------------------------
+  // Pipeline 7 Handler: Encrypt + Steganography Covert Transport
+  // -------------------------------------------------------------
+  const handleRunStegoEncrypt = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stegoSecretFile) return setErrorP7('秘匿するファイルを選択してください');
+
+    setErrorP7('');
+    setResultP7(null);
+    setIsProcessingP7(true);
+
+    try {
+      setStepP7('1/3: カバー画像を読み込み、埋め込み容量を算出中...');
+      let carrierImgFile = stegoCarrierFile;
+      if (!carrierImgFile) {
+        // Generate carrier on the fly
+        const canvas = document.createElement('canvas');
+        canvas.width = 900;
+        canvas.height = 650;
+        const ctx = canvas.getContext('2d')!;
+        const grad = ctx.createLinearGradient(0, 0, 900, 650);
+        grad.addColorStop(0, '#0f172a');
+        grad.addColorStop(0.4, '#1e1b4b');
+        grad.addColorStop(1, '#020617');
+        ctx.fillStyle = grad;
+        ctx.fillRect(0, 0, 900, 650);
+        const blob = await new Promise<Blob>((resolve) => canvas.toBlob((b) => resolve(b!), 'image/png'));
+        carrierImgFile = new File([blob], 'stealth_carrier.png', { type: 'image/png' });
+        setStegoCarrierFile(carrierImgFile);
+        setStegoCarrierPreviewUrl(URL.createObjectURL(carrierImgFile));
+      }
+
+      const img = new Image();
+      const carrierUrl = URL.createObjectURL(carrierImgFile);
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('カバー画像のデコードに失敗しました'));
+        img.src = carrierUrl;
+      });
+
+      const cap = calculateImageCapacity(img.naturalWidth || img.width, img.naturalHeight || img.height);
+      setStegoCarrierCap(cap);
+
+      setStepP7('2/3: 秘密ファイルをGzip圧縮し、AES-256暗号化とCRC32整合性値を算出中...');
+      const secretBytes = new Uint8Array(await stegoSecretFile.arrayBuffer());
+
+      setStepP7('3/3: 画像のRGB画素ビット(LSB)へ不可視暗号埋め込み中...');
+      const stegoRes = await encodeSteganography(img, {
+        type: 'file',
+        fileBytes: secretBytes,
+        fileName: stegoSecretFile.name,
+        mimeType: stegoSecretFile.type || 'application/octet-stream',
+        password: stegoPassword.trim() || undefined,
+        useCompression: true,
+      });
+
+      const downloadUrl = URL.createObjectURL(stegoRes.pngBlob);
+      const usedPercent = Math.min(100, Math.round((stegoSecretFile.size / cap.maxBytes) * 100));
+
+      setResultP7({
+        downloadUrl,
+        filename: `stego_${stegoSecretFile.name.replace(/\.[^/.]+$/, '')}.png`,
+        capacityUsedPercent: usedPercent,
+        origFileSize: stegoSecretFile.size,
+        carrierDimensions: `${cap.width} × ${cap.height} px`,
+      });
+      setStepP7('完了しました');
+    } catch (err: any) {
+      setErrorP7(`ステガノグラフィ偽装エラー: ${err.message}`);
+    } finally {
+      setIsProcessingP7(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -386,7 +711,7 @@ export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
       </div>
 
       {/* Pipeline Navigation Tabs */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5">
         <button
           type="button"
           onClick={() => setActivePipeline('privacy-encrypt')}
@@ -470,7 +795,73 @@ export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
               <span>ZIP化 ＋ AES ＋ RSA暗号化</span>
             </div>
             <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
-              複数ファイルをZIP化しAES-256暗号化、セッション鍵を受取人のRSA公開鍵で安全に封印
+              複数ファイルをZIP化しAES-256暗号化、鍵を受取人のRSA公開鍵で封印
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActivePipeline('sign-encrypt')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+            activePipeline === 'sign-encrypt'
+              ? 'bg-indigo-950/30 border-indigo-500 shadow-sm'
+              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="p-2 rounded-lg bg-purple-500/20 text-purple-400 shrink-0">
+            <FileSignature className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-xs text-slate-100 flex items-center gap-1.5">
+              <span>電子署名 ＋ ハイブリッド暗号化</span>
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
+              送信者秘密鍵で署名付与後に受取人公開鍵で暗号化（Sign-then-Encrypt）
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActivePipeline('shamir-encrypt')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+            activePipeline === 'shamir-encrypt'
+              ? 'bg-indigo-950/30 border-indigo-500 shadow-sm'
+              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="p-2 rounded-lg bg-blue-500/20 text-blue-400 shrink-0">
+            <Share2 className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-xs text-slate-100 flex items-center gap-1.5">
+              <span>Shamir鍵分割 ＋ AES暗号化</span>
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
+              ファイルをAES暗号化し、鍵をシャミア秘密分散法でK-of-N分割出力
+            </div>
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActivePipeline('stego-encrypt')}
+          className={`p-3.5 rounded-xl border text-left transition-all flex items-start gap-3 ${
+            activePipeline === 'stego-encrypt'
+              ? 'bg-indigo-950/30 border-indigo-500 shadow-sm'
+              : 'bg-slate-900/60 border-slate-800 hover:border-slate-700'
+          }`}
+        >
+          <div className="p-2 rounded-lg bg-rose-500/20 text-rose-400 shrink-0">
+            <ImageIcon className="w-4 h-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-bold text-xs text-slate-100 flex items-center gap-1.5">
+              <span>暗号化 ＋ ステガノグラフィ偽装</span>
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
+              ファイルをAES暗号化しカバー画像の画素ビット(LSB)へ不可視埋め込み
             </div>
           </div>
         </button>
@@ -1198,6 +1589,727 @@ export const ActionPipelinesTool: React.FC<Props> = ({ vault }) => {
             ) : (
               <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
                 <Lock className="w-8 h-8 mx-auto text-slate-600" />
+                <div>左のパネルで実行してください</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline 5: Digital Signature + Hybrid Encryption (Sign-then-Encrypt) */}
+      {activePipeline === 'sign-encrypt' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="p-3 bg-purple-950/20 border border-purple-800/40 rounded-lg space-y-1 text-purple-200">
+              <div className="font-semibold flex items-center gap-1.5">
+                <FileSignature className="w-4 h-4 text-purple-400" />
+                <span>ワークフロー概要</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                送信者秘密鍵でファイル全体に電子署名を生成した上で、受取人のRSA公開鍵を用いてワンタイムAES-256ハイブリッド暗号化（Sign-then-Encrypt）を行います。受取人は復号と同時に署名の真正性と改竄の不在を検証でき、暗号化とデジタル署名をワンステップで完結させます。
+              </p>
+            </div>
+
+            <form onSubmit={handleRunSignEncrypt} className="space-y-4">
+              {/* Target File */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">対象ファイル</label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files?.[0]) {
+                      setSignEncryptFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-3 text-center bg-slate-950/50"
+                >
+                  <input
+                    type="file"
+                    onChange={(e) => setSignEncryptFile(e.target.files?.[0] || null)}
+                    className="w-full text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-500 cursor-pointer"
+                  />
+                  {signEncryptFile ? (
+                    <div className="text-[11px] text-purple-300 mt-2 font-mono flex items-center justify-center gap-2">
+                      <span>選択中: <strong>{signEncryptFile.name}</strong></span>
+                      <span>({(signEncryptFile.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      暗号化＋署名するファイルをドラッグ＆ドロップまたは選択
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Sender Signature Key */}
+              <div className="space-y-2 p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <FileSignature className="w-3.5 h-3.5 text-purple-400" />
+                    <span>送信者の署名用秘密鍵</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={senderSigType}
+                      onChange={(e) => setSenderSigType(e.target.value as any)}
+                      className="bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-[11px] text-slate-200"
+                    >
+                      <option value="rsa-pss">RSA-PSS (SHA-256)</option>
+                      <option value="ecdsa">ECDSA (P-256)</option>
+                    </select>
+                    <FileLoaderButton
+                      onFileLoaded={(content) => setSenderPrivateKeyPem(content)}
+                      label="秘密鍵読込"
+                      accept=".pem,.key,.txt"
+                      className="text-[10px] py-0.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                    />
+                  </div>
+                </div>
+
+                {signingVaultKeys.length > 0 && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="text-slate-400 shrink-0">保管庫から選ぶ:</span>
+                    <select
+                      value={selectedVaultSignKeyId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedVaultSignKeyId(id);
+                        const k = signingVaultKeys.find((item) => item.id === id);
+                        if (k?.privateKeyPem) setSenderPrivateKeyPem(k.privateKeyPem);
+                        if (k?.publicKeyPem) setSenderPublicKeyPem(k.publicKeyPem);
+                        if (k?.type === 'ecdsa') setSenderSigType('ecdsa');
+                        else if (k?.type === 'rsa-pss') setSenderSigType('rsa-pss');
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs"
+                    >
+                      <option value="">選択してください...</option>
+                      {signingVaultKeys.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.title} ({k.type.toUpperCase()})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <textarea
+                  value={senderPrivateKeyPem}
+                  onChange={(e) => setSenderPrivateKeyPem(e.target.value)}
+                  placeholder="-----BEGIN PRIVATE KEY-----&#10;送信者の署名用秘密鍵 PEM を貼り付け&#10;-----END PRIVATE KEY-----"
+                  rows={3}
+                  required
+                  className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-slate-100 font-mono text-[10px] focus:outline-none focus:border-purple-500"
+                />
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between text-[11px]">
+                    <span className="text-slate-400">送信者の公開鍵 PEM (受取人の自動検証用・推奨):</span>
+                    <FileLoaderButton
+                      onFileLoaded={(content) => setSenderPublicKeyPem(content)}
+                      label="公開鍵読込"
+                      accept=".pem,.pub,.key,.txt"
+                      className="text-[10px] py-0.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                    />
+                  </div>
+                  <textarea
+                    value={senderPublicKeyPem}
+                    onChange={(e) => setSenderPublicKeyPem(e.target.value)}
+                    placeholder="-----BEGIN PUBLIC KEY-----&#10;送信者の公開鍵 PEM (受取人が復号時に署名真正性を自動照合するためにカプセル化されます)&#10;-----END PUBLIC KEY-----"
+                    rows={2}
+                    className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-slate-100 font-mono text-[10px] focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+              </div>
+
+              {/* Recipient Hybrid RSA Public Key */}
+              <div className="space-y-1.5 p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-400" />
+                    <span>受取人のRSA暗号化公開鍵 (RSA-OAEP)</span>
+                  </span>
+                  <FileLoaderButton
+                    onFileLoaded={(content) => setRecipientHybridPublicKeyPem(content)}
+                    label="公開鍵読込"
+                    accept=".pem,.pub,.key,.txt"
+                    className="text-[10px] py-0.5 px-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700"
+                  />
+                </div>
+
+                {rsaVaultKeys.length > 0 && (
+                  <div className="flex items-center gap-2 text-[11px]">
+                    <span className="text-slate-400 shrink-0">保管庫から選ぶ:</span>
+                    <select
+                      value={selectedVaultRecipientKeyId}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        setSelectedVaultRecipientKeyId(id);
+                        const k = rsaVaultKeys.find((item) => item.id === id);
+                        if (k?.publicKeyPem) setRecipientHybridPublicKeyPem(k.publicKeyPem);
+                      }}
+                      className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-1 text-slate-200 text-xs"
+                    >
+                      <option value="">選択してください...</option>
+                      {rsaVaultKeys.map((k) => (
+                        <option key={k.id} value={k.id}>
+                          {k.title} ({k.algorithmDetails?.modulusLength || 2048}bit)
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
+                <textarea
+                  value={recipientHybridPublicKeyPem}
+                  onChange={(e) => setRecipientHybridPublicKeyPem(e.target.value)}
+                  placeholder="-----BEGIN PUBLIC KEY-----&#10;受取人のRSA公開鍵 PEM を貼り付け&#10;-----END PUBLIC KEY-----"
+                  rows={3}
+                  required
+                  className="w-full px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded text-slate-100 font-mono text-[10px] focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {stepP5 && (
+                <div className="p-2.5 bg-purple-950/30 border border-purple-800/40 rounded-lg text-purple-300 text-[11px] flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>{stepP5}</span>
+                </div>
+              )}
+
+              {errorP5 && (
+                <div className="p-2.5 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-[11px]">
+                  {errorP5}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isProcessingP5 || !signEncryptFile}
+                className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                {isProcessingP5 ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>処理中...</span>
+                  </>
+                ) : (
+                  <>
+                    <FileSignature className="w-4 h-4" />
+                    <span>署名付与 ＋ ハイブリッド暗号化を実行</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Result Card */}
+          <div className="md:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <h3 className="font-semibold text-slate-200 border-b border-slate-800 pb-2">
+              署名付き暗号化パッケージ結果
+            </h3>
+
+            {resultP5 ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-purple-950/30 border border-purple-800/60 rounded-lg text-purple-300 space-y-1.5">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-purple-400" />
+                    <span>署名・暗号化パッケージが完成しました</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-mono space-y-0.5 pt-1 border-t border-purple-900/40">
+                    <div>署名方式: <strong className="text-slate-100">{resultP5.sigType}</strong></div>
+                    <div>平文サイズ: {(resultP5.origSize / 1024).toFixed(1)} KB</div>
+                    <div>暗号コンテナサイズ: {(resultP5.encSize / 1024).toFixed(1)} KB</div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg space-y-1 font-mono text-[10px]">
+                  <div className="text-slate-400 font-sans text-xs flex items-center justify-between">
+                    <span className="flex items-center gap-1">
+                      <Hash className="w-3 h-3 text-purple-400" />
+                      <span>SHA-256 チェックサム:</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(resultP5.sha256, 'signSha256')}
+                      className="text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                    >
+                      {copiedKey === 'signSha256' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>コピー</span>
+                    </button>
+                  </div>
+                  <div className="text-purple-300 break-all select-all">{resultP5.sha256}</div>
+                </div>
+
+                <a
+                  href={resultP5.downloadUrl}
+                  download={resultP5.filename}
+                  className="w-full py-2.5 rounded-lg bg-purple-600 hover:bg-purple-500 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>暗号化パッケージ ({resultP5.filename}) を保存</span>
+                </a>
+
+                <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg text-[11px] text-slate-400 space-y-1">
+                  <div className="font-semibold text-slate-200">復号と署名検証方法</div>
+                  <p className="leading-relaxed">
+                    受取人はこのファイルを「自動解析・復号」ツールにドラッグ＆ドロップし、自身のRSA秘密鍵を指定するだけで自動復号が行われ、同時に送信者の電子署名検証結果が表示されます。
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
+                <FileSignature className="w-8 h-8 mx-auto text-slate-600" />
+                <div>左のパネルで実行してください</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline 6: Shamir Secret Sharing + AES File Encryption */}
+      {activePipeline === 'shamir-encrypt' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="p-3 bg-blue-950/20 border border-blue-800/40 rounded-lg space-y-1 text-blue-200">
+              <div className="font-semibold flex items-center gap-1.5">
+                <Share2 className="w-4 h-4 text-blue-400" />
+                <span>ワークフロー概要</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                ファイルを強力なAES-256共通鍵で暗号化し、その暗号鍵をシャミアの秘密分散法（K-of-N 閾値秘密分散）で数学的に分割します。指定した K 個のシェアが集まらない限り、暗号論的に鍵の復元は不可能です。共同管理・取締役会・複数管理者での金庫保管に最適です。
+              </p>
+            </div>
+
+            <form onSubmit={handleRunShamirEncrypt} className="space-y-4">
+              {/* Target File */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">暗号化するファイル</label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files?.[0]) {
+                      setShamirFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-3 text-center bg-slate-950/50"
+                >
+                  <input
+                    type="file"
+                    onChange={(e) => setShamirFile(e.target.files?.[0] || null)}
+                    className="w-full text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-500 cursor-pointer"
+                  />
+                  {shamirFile ? (
+                    <div className="text-[11px] text-blue-300 mt-2 font-mono flex items-center justify-center gap-2">
+                      <span>選択中: <strong>{shamirFile.name}</strong></span>
+                      <span>({(shamirFile.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      暗号化対象ファイルをドラッグ＆ドロップまたは選択
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Threshold Parameters */}
+              <div className="grid grid-cols-2 gap-4 p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    復元閾値 k (必要人数)
+                  </label>
+                  <input
+                    type="number"
+                    min={2}
+                    max={20}
+                    value={shamirK}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value) || 2;
+                      setShamirK(val);
+                      if (shamirN < val) setShamirN(val);
+                    }}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono text-center focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    鍵の復元に最低限必要なシェア数
+                  </span>
+                </div>
+
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    総シェア数 n (配布総数)
+                  </label>
+                  <input
+                    type="number"
+                    min={shamirK}
+                    max={50}
+                    value={shamirN}
+                    onChange={(e) => setShamirN(parseInt(e.target.value) || shamirK)}
+                    className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-100 font-mono text-center focus:outline-none focus:border-blue-500"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-0.5 block">
+                    発行・配布する合計シェア数
+                  </span>
+                </div>
+              </div>
+
+              {stepP6 && (
+                <div className="p-2.5 bg-blue-950/30 border border-blue-800/40 rounded-lg text-blue-300 text-[11px] flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>{stepP6}</span>
+                </div>
+              )}
+
+              {errorP6 && (
+                <div className="p-2.5 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-[11px]">
+                  {errorP6}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isProcessingP6 || !shamirFile}
+                className="w-full py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                {isProcessingP6 ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>処理中...</span>
+                  </>
+                ) : (
+                  <>
+                    <Share2 className="w-4 h-4" />
+                    <span>AES暗号化 ＋ Shamir鍵分割を実行</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Result Card */}
+          <div className="md:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <h3 className="font-semibold text-slate-200 border-b border-slate-800 pb-2">
+              暗号ファイル ＆ 鍵分割シェア群
+            </h3>
+
+            {resultP6 ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-blue-950/30 border border-blue-800/60 rounded-lg text-blue-300 space-y-1.5">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-blue-400" />
+                    <span>暗号化と {resultP6.shares.length} 個の鍵分割が完了しました</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-mono">
+                    閾値: <strong className="text-slate-100">{shamirK} of {shamirN}</strong>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <a
+                    href={resultP6.encFileUrl}
+                    download={resultP6.encFilename}
+                    className="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white font-medium flex items-center justify-center gap-1.5 shadow-sm text-center"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>暗号化本体 (.lcv)</span>
+                  </a>
+
+                  <a
+                    href={resultP6.zipSharesUrl}
+                    download={resultP6.zipSharesFilename}
+                    className="py-2 px-3 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center justify-center gap-1.5 shadow-sm text-center"
+                  >
+                    <FolderArchive className="w-3.5 h-3.5" />
+                    <span>全シェア一括ZIP</span>
+                  </a>
+                </div>
+
+                {/* Individual Share List */}
+                <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                  {resultP6.shares.map((s) => (
+                    <div key={s.x} className="p-2.5 bg-slate-950 border border-slate-800 rounded-lg space-y-1.5">
+                      <div className="flex items-center justify-between text-[11px]">
+                        <span className="font-semibold text-slate-200">
+                          シェア {s.x} / {s.n}
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {shareQrDataUrls[s.x] && (
+                            <button
+                              type="button"
+                              onClick={() => setActiveShareQrIndex(activeShareQrIndex === s.x ? null : s.x)}
+                              className="text-slate-400 hover:text-blue-400 flex items-center gap-0.5 text-[10px]"
+                            >
+                              <QrCode className="w-3 h-3" />
+                              <span>QR</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(s.formattedText, `share-${s.x}`)}
+                            className="text-blue-400 hover:text-blue-300 flex items-center gap-0.5 text-[10px]"
+                          >
+                            {copiedKey === `share-${s.x}` ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                            <span>コピー</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {activeShareQrIndex === s.x && shareQrDataUrls[s.x] && (
+                        <div className="p-2 bg-white rounded flex justify-center">
+                          <img src={shareQrDataUrls[s.x]} alt={`Share ${s.x} QR`} className="w-36 h-36" />
+                        </div>
+                      )}
+
+                      <div className="text-[10px] font-mono text-slate-400 truncate bg-slate-900/60 p-1 rounded">
+                        {s.formattedText}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="p-2.5 bg-slate-950 border border-slate-800/80 rounded-lg text-[10px] text-slate-400">
+                  【復元方法】参加者のうち任意の {shamirK} 名のシェアを「Shamir秘密分散」または「自動解析・復号」に投入するとAESキーが再構築されます。
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
+                <Share2 className="w-8 h-8 mx-auto text-slate-600" />
+                <div>左のパネルで実行してください</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Pipeline 7: Encrypt + Steganography Covert Transport */}
+      {activePipeline === 'stego-encrypt' && (
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+          <div className="md:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <div className="p-3 bg-rose-950/20 border border-rose-800/40 rounded-lg space-y-1 text-rose-200">
+              <div className="font-semibold flex items-center gap-1.5">
+                <ImageIcon className="w-4 h-4 text-rose-400" />
+                <span>ワークフロー概要</span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                ファイルをGzip圧縮およびAES-256暗号化した上で、カバー画像のRGB画素最下位ビット(LSB)に不可視埋め込みします。通信監査や検閲を回避し、外見上は無害な画像ファイルとして極秘ファイルを安全に偽装転送できます。
+              </p>
+            </div>
+
+            <form onSubmit={handleRunStegoEncrypt} className="space-y-4">
+              {/* Secret Target File */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  秘匿するファイル (ドキュメント/暗号ファイル等)
+                </label>
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files?.[0]) {
+                      setStegoSecretFile(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className="border-2 border-dashed border-slate-800 hover:border-slate-700 rounded-lg p-3 text-center bg-slate-950/50"
+                >
+                  <input
+                    type="file"
+                    onChange={(e) => setStegoSecretFile(e.target.files?.[0] || null)}
+                    className="w-full text-slate-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-rose-600 file:text-white hover:file:bg-rose-500 cursor-pointer"
+                  />
+                  {stegoSecretFile ? (
+                    <div className="text-[11px] text-rose-300 mt-2 font-mono flex items-center justify-center gap-2">
+                      <span>秘匿対象: <strong>{stegoSecretFile.name}</strong></span>
+                      <span>({(stegoSecretFile.size / 1024).toFixed(1)} KB)</span>
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-slate-500 mt-1">
+                      画像の中に隠したい秘密ファイルをドラッグ＆ドロップまたは選択
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Cover Carrier Image */}
+              <div className="space-y-2 p-3 bg-slate-950/60 border border-slate-800 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <ImageIcon className="w-3.5 h-3.5 text-rose-400" />
+                    <span>カバー画像 (偽装用キャリア画像)</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleGenerateDefaultCarrier}
+                    className="text-[10px] py-1 px-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded border border-slate-700 flex items-center gap-1"
+                  >
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                    <span>カバー画像を自動生成</span>
+                  </button>
+                </div>
+
+                <div
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const file = e.dataTransfer.files?.[0];
+                    if (file && file.type.startsWith('image/')) {
+                      setStegoCarrierFile(file);
+                      setStegoCarrierPreviewUrl(URL.createObjectURL(file));
+                    }
+                  }}
+                  className="border border-slate-800 rounded-lg p-2.5 text-center bg-slate-900/60"
+                >
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) {
+                        setStegoCarrierFile(file);
+                        setStegoCarrierPreviewUrl(URL.createObjectURL(file));
+                      }
+                    }}
+                    className="w-full text-slate-400 file:mr-3 file:py-1 file:px-2.5 file:rounded file:border-0 file:text-[11px] file:font-semibold file:bg-slate-800 file:text-slate-200 hover:file:bg-slate-700 cursor-pointer"
+                  />
+                  {stegoCarrierPreviewUrl && (
+                    <div className="mt-2 flex items-center justify-center gap-3">
+                      <img
+                        src={stegoCarrierPreviewUrl}
+                        alt="Carrier preview"
+                        className="w-16 h-12 object-cover rounded border border-slate-700"
+                      />
+                      <div className="text-[11px] text-slate-300 text-left">
+                        <div>{stegoCarrierFile?.name}</div>
+                        {stegoCarrierCap && (
+                          <div className="text-[10px] text-slate-400">
+                            最大埋込容量: <strong className="text-rose-400">{stegoCarrierCap.formattedMaxCapacity}</strong> ({stegoCarrierCap.width}×{stegoCarrierCap.height})
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Encryption Password */}
+              <div>
+                <label className="block text-slate-300 font-semibold mb-1">
+                  暗号化パスワード (任意・空欄の場合は平文埋め込み)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showStegoPassword ? 'text' : 'password'}
+                    value={stegoPassword}
+                    onChange={(e) => setStegoPassword(e.target.value)}
+                    placeholder="パスワードを入力（推奨）"
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono pr-10 focus:outline-none focus:border-rose-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowStegoPassword(!showStegoPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                  >
+                    {showStegoPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+
+              {stepP7 && (
+                <div className="p-2.5 bg-rose-950/30 border border-rose-800/40 rounded-lg text-rose-300 text-[11px] flex items-center gap-2">
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  <span>{stepP7}</span>
+                </div>
+              )}
+
+              {errorP7 && (
+                <div className="p-2.5 bg-rose-950/40 border border-rose-800/60 rounded-lg text-rose-300 text-[11px]">
+                  {errorP7}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={isProcessingP7 || !stegoSecretFile}
+                className="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-2 transition-all shadow-sm"
+              >
+                {isProcessingP7 ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>偽装中...</span>
+                  </>
+                ) : (
+                  <>
+                    <ImageIcon className="w-4 h-4" />
+                    <span>AES暗号化 ＋ ステガノグラフィ偽装を実行</span>
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Result Card */}
+          <div className="md:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 text-xs">
+            <h3 className="font-semibold text-slate-200 border-b border-slate-800 pb-2">
+              偽装画像生成結果
+            </h3>
+
+            {resultP7 ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-rose-950/30 border border-rose-800/60 rounded-lg text-rose-300 space-y-1.5">
+                  <div className="font-semibold flex items-center gap-1.5">
+                    <Check className="w-4 h-4 text-rose-400" />
+                    <span>偽装PNG画像が完成しました</span>
+                  </div>
+                  <div className="text-[11px] text-slate-300 font-mono space-y-0.5 pt-1 border-t border-rose-900/40">
+                    <div>解像度: {resultP7.carrierDimensions}</div>
+                    <div>秘匿データ: {(resultP7.origFileSize / 1024).toFixed(1)} KB</div>
+                    <div>画像容量占有率: {resultP7.capacityUsedPercent}%</div>
+                  </div>
+                </div>
+
+                <div className="p-2 bg-slate-950 border border-slate-800 rounded-lg flex justify-center">
+                  <img
+                    src={resultP7.downloadUrl}
+                    alt="Stego Result"
+                    className="max-h-48 rounded object-contain border border-slate-800"
+                  />
+                </div>
+
+                <a
+                  href={resultP7.downloadUrl}
+                  download={resultP7.filename}
+                  className="w-full py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-medium flex items-center justify-center gap-2 shadow-sm"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>偽装画像 ({resultP7.filename}) を保存</span>
+                </a>
+
+                <div className="p-3 bg-slate-950 border border-slate-800/80 rounded-lg text-[11px] text-slate-400 space-y-1">
+                  <div className="font-semibold text-slate-200">復号・抽出方法</div>
+                  <p className="leading-relaxed">
+                    受取人はこのPNG画像を「自動解析・復号」または「ステガノグラフィ」ツールにドラッグ＆ドロップし、パスワードを入力するだけで即座に平文ファイルを抽出・復元できます。
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
+                <ImageIcon className="w-8 h-8 mx-auto text-slate-600" />
                 <div>左のパネルで実行してください</div>
               </div>
             )}

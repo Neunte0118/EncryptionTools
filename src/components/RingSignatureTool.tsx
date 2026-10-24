@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import {
-  generateRingKeyPair,
   generateDummyRingMembers,
   createRingSignature,
   verifyRingSignature,
@@ -9,6 +8,7 @@ import {
   RingSignaturePackage,
   RingVerificationResult,
 } from '../utils/ringSignatureUtils';
+import { KeyVaultFile } from '../types/crypto';
 import {
   ShieldAlert,
   ShieldCheck,
@@ -18,25 +18,46 @@ import {
   Trash2,
   Copy,
   Check,
-  RefreshCw,
   KeyRound,
   FileSignature,
   Download,
   AlertTriangle,
   Info,
-  HelpCircle,
   Eye,
   EyeOff,
   Sparkles,
   ArrowRight,
-  ExternalLink,
 } from 'lucide-react';
 
-export const RingSignatureTool: React.FC = () => {
+interface Props {
+  vault?: KeyVaultFile;
+  onNavigateToKeyGenerator?: () => void;
+}
+
+export const RingSignatureTool: React.FC<Props> = ({
+  vault,
+  onNavigateToKeyGenerator,
+}) => {
   const [activeTab, setActiveTab] = useState<'sign' | 'verify'>('sign');
 
   // Signer State
-  const [myKeyPair, setMyKeyPair] = useState<RingKeyPair>(() => generateRingKeyPair('あなたの鍵'));
+  const ringVaultKeys = vault?.keys.filter((k) => k.type === 'ring' || k.type === 'ed25519') || [];
+  const defaultKey: RingKeyPair = ringVaultKeys.length > 0 && ringVaultKeys[0].publicKeyPem && ringVaultKeys[0].privateKeyPem
+    ? {
+        publicKeyHex: ringVaultKeys[0].publicKeyPem,
+        secretKeyHex: ringVaultKeys[0].privateKeyPem,
+        label: ringVaultKeys[0].title,
+        createdAt: Date.now(),
+      }
+    : {
+        publicKeyHex: '',
+        secretKeyHex: '',
+        label: 'あなたの鍵',
+        createdAt: Date.now(),
+      };
+
+  const [myKeyPair, setMyKeyPair] = useState<RingKeyPair>(defaultKey);
+  const [selectedVaultKeyId, setSelectedVaultKeyId] = useState('');
   const [showSecretKey, setShowSecretKey] = useState(false);
   const [signMessage, setSignMessage] = useState('');
   const [ringMembers, setRingMembers] = useState<RingMember[]>([]);
@@ -55,15 +76,17 @@ export const RingSignatureTool: React.FC = () => {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showExplanation, setShowExplanation] = useState(false);
 
-  // Initialize ring with user's own key
+  // Initialize ring with user's own key if available
   useEffect(() => {
-    initDefaultRing(myKeyPair);
-  }, []);
+    if (myKeyPair.publicKeyHex) {
+      initDefaultRing(myKeyPair);
+    }
+  }, [myKeyPair.publicKeyHex]);
 
   const initDefaultRing = (key: RingKeyPair) => {
     const selfMember: RingMember = {
       publicKeyHex: key.publicKeyHex,
-      label: 'あなた (署名者)',
+      label: key.label || 'あなた (署名者)',
       isSelf: true,
     };
     setRingMembers([selfMember]);
@@ -76,13 +99,6 @@ export const RingSignatureTool: React.FC = () => {
       [res[i], res[j]] = [res[j], res[i]];
     }
     return res;
-  };
-
-  const handleRegenerateMyKey = () => {
-    const newKey = generateRingKeyPair('私の匿名鍵');
-    setMyKeyPair(newKey);
-    initDefaultRing(newKey);
-    setGeneratedSignature(null);
   };
 
   const handleAddDecoys = (count: number) => {
@@ -101,84 +117,76 @@ export const RingSignatureTool: React.FC = () => {
       return;
     }
 
-    setRingMembers((prev) => [
-      ...prev,
-      {
-        publicKeyHex: cleaned,
-        label: newMemberLabel.trim() || `外部公開鍵 (${cleaned.slice(0, 8)}...)`,
-        isSelf: cleaned === myKeyPair.publicKeyHex.toLowerCase(),
-      },
-    ]);
+    const newMember: RingMember = {
+      publicKeyHex: cleaned,
+      label: newMemberLabel.trim() || `メンバー ${ringMembers.length + 1}`,
+      isSelf: false,
+    };
+
+    setRingMembers((prev) => shuffleArray([...prev, newMember]));
     setNewMemberPub('');
     setNewMemberLabel('');
   };
 
-  const handleRemoveMember = (index: number) => {
-    if (ringMembers[index].isSelf) {
-      alert('自身の公開鍵は削除できません（署名に必要なため）');
+  const handleRemoveMember = (pubHex: string) => {
+    if (pubHex.toLowerCase() === myKeyPair.publicKeyHex.toLowerCase()) {
+      alert('自身の公開鍵をリングから削除することはできません');
       return;
     }
-    if (ringMembers.length <= 2) {
-      alert('リングには最低2つ以上の公開鍵が必要です');
-      return;
-    }
-    setRingMembers((prev) => prev.filter((_, i) => i !== index));
+    setRingMembers((prev) => prev.filter((m) => m.publicKeyHex.toLowerCase() !== pubHex.toLowerCase()));
   };
 
   const handleSign = () => {
     setSignError('');
     setGeneratedSignature(null);
 
+    if (!myKeyPair.secretKeyHex || !myKeyPair.publicKeyHex) {
+      setSignError('署名者の鍵ペアが設定されていません。「暗号鍵生成」ツールで生成してください');
+      return;
+    }
+
     if (!signMessage.trim()) {
-      setSignError('署名するメッセージを入力してください');
+      setSignError('署名対象のメッセージを入力してください');
+      return;
+    }
+
+    if (ringMembers.length < 2) {
+      setSignError('リング署名には最低2名以上（あなた + 1名以上のメンバー/おとり）が必要です');
       return;
     }
 
     setIsSigning(true);
     try {
-      const pubKeys = ringMembers.map((m) => m.publicKeyHex);
-      const sig = createRingSignature(signMessage.trim(), pubKeys, myKeyPair.secretKeyHex);
-      setGeneratedSignature(sig);
+      const publicKeys = ringMembers.map((m) => m.publicKeyHex);
+      const pkg = createRingSignature(signMessage.trim(), publicKeys, myKeyPair.secretKeyHex);
+      setGeneratedSignature(pkg);
     } catch (err: any) {
-      setSignError(err.message || '署名生成に失敗しました');
+      setSignError(`リング署名作成エラー: ${err.message}`);
     } finally {
       setIsSigning(false);
     }
   };
 
-  const handleSendToVerify = () => {
-    if (!generatedSignature) return;
-    setVerifyInputJson(JSON.stringify(generatedSignature, null, 2));
-    setActiveTab('verify');
-    // Auto-verify
-    const res = verifyRingSignature(generatedSignature);
-    setVerificationResult(res);
-  };
-
   const handleVerify = () => {
+    setVerificationResult(null);
+
     if (!verifyInputJson.trim()) {
-      setVerificationResult({
-        isValid: false,
-        ringSize: 0,
-        anonymityScore: '0%',
-        verifiedAt: Date.now(),
-        error: '検証するリング署名JSONを入力してください',
-      });
+      alert('検証対象のリング署名JSONを入力してください');
       return;
     }
 
     setIsVerifying(true);
     try {
-      const parsed = JSON.parse(verifyInputJson);
-      const res = verifyRingSignature(parsed);
+      const pkg: RingSignaturePackage = JSON.parse(verifyInputJson.trim());
+      const res = verifyRingSignature(pkg);
       setVerificationResult(res);
     } catch (err: any) {
       setVerificationResult({
         isValid: false,
         ringSize: 0,
-        anonymityScore: '0%',
+        anonymityScore: 'エラー',
         verifiedAt: Date.now(),
-        error: `JSON解析エラー: ${err.message}`,
+        error: `JSON解析エラーまたは署名形式無効: ${err.message}`,
       });
     } finally {
       setIsVerifying(false);
@@ -188,25 +196,39 @@ export const RingSignatureTool: React.FC = () => {
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedKey(id);
-    setTimeout(() => setCopiedKey(null), 2000);
+    setTimeout(() => setCopiedKey(null), 1800);
+  };
+
+  const handleDownloadPackage = () => {
+    if (!generatedSignature) return;
+    const jsonStr = JSON.stringify(generatedSignature, null, 2);
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `ring_signature_${Date.now()}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      {/* Top Header */}
+    <div className="space-y-6 max-w-5xl mx-auto">
+      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-violet-600/20 text-violet-400 border border-violet-500/30 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
             <Users className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-100">リング署名 (Ring Signature)</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-violet-950/80 text-violet-300 border border-violet-800/60 font-mono font-medium">
+              <h2 className="text-lg font-bold text-slate-100">リング署名 (Ring Signature)</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-medium">
                 Ed25519-SAG 準拠
               </span>
             </div>
-            <p className="text-xs text-slate-400">
+            <p className="text-[11px] text-slate-400 mt-0.5">
               「グループの誰か1人が署名した」ことを証明しつつ、署名者自身を数学的に完全匿名化
             </p>
           </div>
@@ -218,9 +240,7 @@ export const RingSignatureTool: React.FC = () => {
             type="button"
             onClick={() => setActiveTab('sign')}
             className={`px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-              activeTab === 'sign'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'sign' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <FileSignature className="w-3.5 h-3.5" />
@@ -230,9 +250,7 @@ export const RingSignatureTool: React.FC = () => {
             type="button"
             onClick={() => setActiveTab('verify')}
             className={`px-3.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
-              activeTab === 'verify'
-                ? 'bg-violet-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-slate-200'
+              activeTab === 'verify' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <ShieldCheck className="w-3.5 h-3.5" />
@@ -241,11 +259,28 @@ export const RingSignatureTool: React.FC = () => {
         </div>
       </div>
 
+      {/* Strict Key Notice Banner */}
+      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span className="flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
+        </span>
+        {onNavigateToKeyGenerator && (
+          <button
+            type="button"
+            onClick={onNavigateToKeyGenerator}
+            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
+          >
+            「暗号鍵生成」を開く
+          </button>
+        )}
+      </div>
+
       {/* Info Notice & Concept Accordion */}
       <div className="bg-slate-900/80 border border-slate-800 rounded-xl p-4 text-xs space-y-2">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-violet-300 font-semibold">
-            <Info className="w-4 h-4 text-violet-400" />
+          <div className="flex items-center gap-2 text-indigo-300 font-semibold">
+            <Info className="w-4 h-4 text-indigo-400" />
             <span>リング署名とは？ なぜ署名者を特定できないのか？</span>
           </div>
           <button
@@ -257,25 +292,8 @@ export const RingSignatureTool: React.FC = () => {
           </button>
         </div>
         <p className="text-slate-400 leading-relaxed text-[11px]">
-          通常の電子署名は「誰が署名したか」を明かします。一方、<strong>リング署名（Rivest-Shamir-Tauman / Monero方式）</strong>は、署名者が任意のおとり公開鍵群（リング）を指定し、数学的な輪（サイクル方程式）を一周させて閉じることで、<strong className="text-slate-200">「リングに含まれるN人のうち確実に誰か1人が署名した」</strong>ことを100%証明しながら、<strong className="text-slate-200">「誰が署名したのかは確率 1/N で完全に特定不能」</strong>にします。内部告発や匿名投票、秘密送金で極めて重要な技術です。
+          通常の電子署名は「誰が署名したか」を明かします。一方、<strong>リング署名（Monero / SAG方式）</strong>は、署名者が任意のおとり公開鍵群（リング）を指定し、数学的な輪（サイクル方程式）を一周させて閉じることで、<strong className="text-slate-200">「リングに含まれるN人のうち確実に誰か1人が署名した」</strong>ことを100%証明しながら、<strong className="text-slate-200">「誰が署名したのかは確率 1/N で完全に特定不能」</strong>にします。内部告発や匿名投票で極めて重要な技術です。
         </p>
-
-        {showExplanation && (
-          <div className="pt-2 mt-2 border-t border-slate-800 grid grid-cols-1 md:grid-cols-3 gap-3 text-[11px] text-slate-400">
-            <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800 space-y-1">
-              <div className="font-semibold text-slate-200">1. おとりの同意が不要</div>
-              <p>リングに含める他者の公開鍵は、本人の許可や事前の協力なしに自由に追加できます。</p>
-            </div>
-            <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800 space-y-1">
-              <div className="font-semibold text-slate-200">2. 数学的な否認可能性</div>
-              <p>検証者はN個のレスポンスを見ても、どれが本物の鍵でどれがおとり乱数かを区別できません。</p>
-            </div>
-            <div className="p-2.5 bg-slate-950/60 rounded-lg border border-slate-800 space-y-1">
-              <div className="font-semibold text-slate-200">3. 改竄は1ビットでも不可能</div>
-              <p>メッセージやリング内の鍵が1文字でも改ざんされると、輪（サイクル）が閉じず検証は即座に失敗します。</p>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Mode 1: Sign Tab */}
@@ -286,42 +304,83 @@ export const RingSignatureTool: React.FC = () => {
             {/* My Key Box */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="font-bold text-slate-200 flex items-center gap-1.5">
-                  <KeyRound className="w-4 h-4 text-violet-400" />
+                <div className="font-semibold text-slate-200 flex items-center gap-1.5">
+                  <KeyRound className="w-4 h-4 text-indigo-400" />
                   <span>あなたの署名用鍵ペア</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleRegenerateMyKey}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center gap-1 text-[11px] transition-colors"
-                  title="新しい鍵ペアをランダム生成"
-                >
-                  <RefreshCw className="w-3 h-3 text-violet-400" />
-                  <span>新しい鍵を再生成</span>
-                </button>
+                {onNavigateToKeyGenerator && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToKeyGenerator}
+                    className="px-2.5 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 flex items-center gap-1 text-[11px] font-semibold transition-colors"
+                  >
+                    <KeyRound className="w-3 h-3 text-indigo-400" />
+                    <span>「暗号鍵生成」で鍵を生成</span>
+                  </button>
+                )}
               </div>
+
+              {ringVaultKeys.length > 0 && (
+                <div>
+                  <select
+                    value={selectedVaultKeyId}
+                    onChange={(e) => {
+                      setSelectedVaultKeyId(e.target.value);
+                      const k = ringVaultKeys.find((item) => item.id === e.target.value);
+                      if (k?.publicKeyPem && k?.privateKeyPem) {
+                        const newKey: RingKeyPair = {
+                          publicKeyHex: k.publicKeyPem,
+                          secretKeyHex: k.privateKeyPem,
+                          label: k.title,
+                          createdAt: Date.now(),
+                        };
+                        setMyKeyPair(newKey);
+                        initDefaultRing(newKey);
+                      }
+                    }}
+                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
+                  >
+                    <option value="">-- 保管庫のリング署名キーから選択 --</option>
+                    {ringVaultKeys.map((k) => (
+                      <option key={k.id} value={k.id}>
+                        {k.title}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="space-y-2">
                 <div>
                   <div className="text-[11px] text-slate-400 mb-0.5 flex justify-between">
-                    <span>あなたの公開鍵 (Ed25519):</span>
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(myKeyPair.publicKeyHex, 'myPub')}
-                      className="text-violet-400 hover:text-violet-300 flex items-center gap-0.5"
-                    >
-                      {copiedKey === 'myPub' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>コピー</span>
-                    </button>
+                    <span>あなたの公開鍵 (Ed25519 Hex):</span>
+                    {myKeyPair.publicKeyHex && (
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(myKeyPair.publicKeyHex, 'myPub')}
+                        className="text-indigo-400 hover:text-indigo-300 flex items-center gap-0.5"
+                      >
+                        {copiedKey === 'myPub' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                        <span>コピー</span>
+                      </button>
+                    )}
                   </div>
-                  <div className="p-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-emerald-400 break-all select-all">
-                    {myKeyPair.publicKeyHex}
-                  </div>
+                  <input
+                    type="text"
+                    value={myKeyPair.publicKeyHex}
+                    onChange={(e) => {
+                      const updated = { ...myKeyPair, publicKeyHex: e.target.value.trim() };
+                      setMyKeyPair(updated);
+                      if (updated.publicKeyHex) initDefaultRing(updated);
+                    }}
+                    placeholder="公開鍵Hexを入力または保管庫から選択..."
+                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-indigo-300 focus:outline-none focus:border-indigo-500"
+                  />
                 </div>
 
                 <div>
                   <div className="text-[11px] text-slate-400 mb-0.5 flex justify-between items-center">
-                    <span>あなたの秘密鍵スカラー:</span>
+                    <span>あなたの秘密鍵スカラー (Hex):</span>
                     <button
                       type="button"
                       onClick={() => setShowSecretKey(!showSecretKey)}
@@ -331,18 +390,20 @@ export const RingSignatureTool: React.FC = () => {
                       <span>{showSecretKey ? '隠す' : '表示'}</span>
                     </button>
                   </div>
-                  <div className="p-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-rose-300 break-all select-all">
-                    {showSecretKey
-                      ? myKeyPair.secretKeyHex
-                      : '••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••'}
-                  </div>
+                  <input
+                    type={showSecretKey ? 'text' : 'password'}
+                    value={myKeyPair.secretKeyHex}
+                    onChange={(e) => setMyKeyPair({ ...myKeyPair, secretKeyHex: e.target.value.trim() })}
+                    placeholder="秘密鍵Hexを入力または保管庫から選択..."
+                    className="w-full p-2 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-rose-300 focus:outline-none focus:border-indigo-500"
+                  />
                 </div>
               </div>
             </div>
 
             {/* Message Box */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
-              <label className="block font-bold text-slate-200">
+              <label className="block font-semibold text-slate-200">
                 署名する声明文・内部告発メッセージ
               </label>
               <textarea
@@ -350,129 +411,100 @@ export const RingSignatureTool: React.FC = () => {
                 onChange={(e) => setSignMessage(e.target.value)}
                 rows={4}
                 placeholder="匿名で証明したいメッセージを入力..."
-                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-sans focus:outline-none focus:border-violet-500 leading-relaxed"
+                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-sans focus:outline-none focus:border-indigo-500 leading-relaxed text-xs"
               />
             </div>
 
-            {/* Ring Members (Decoys) Configuration */}
+            {/* Ring Members Configuration */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                 <div>
-                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
-                    <Users className="w-4 h-4 text-violet-400" />
-                    <span>リング構成メンバー ({ringMembers.length} 人)</span>
+                  <h3 className="font-semibold text-slate-200 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-400" />
+                    <span>リング構成メンバー (計 {ringMembers.length} 名)</span>
+                  </h3>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    おとり人数が多いほど匿名確率が上がります (特定確率: 1/{ringMembers.length})
                   </div>
-                  <p className="text-[11px] text-slate-400">
-                    現在の匿名度: 署名者特定確率 <strong>1/{ringMembers.length} ({((1 / ringMembers.length) * 100).toFixed(1)}%)</strong>
-                  </p>
                 </div>
 
-                {/* Quick Add Preset Decoys */}
                 <div className="flex items-center gap-1.5">
-                  <span className="text-[11px] text-slate-500 hidden sm:inline">おとり追加:</span>
-                  <button
-                    type="button"
-                    onClick={() => handleAddDecoys(1)}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
-                  >
-                    +1人
-                  </button>
                   <button
                     type="button"
                     onClick={() => handleAddDecoys(3)}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium transition-colors"
                   >
-                    +3人
+                    +3名おとり追加
                   </button>
                   <button
                     type="button"
                     onClick={() => handleAddDecoys(5)}
-                    className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] transition-colors"
+                    className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-[11px] font-medium transition-colors"
                   >
-                    +5人
+                    +5名おとり追加
                   </button>
                 </div>
               </div>
 
               {/* Members List */}
-              <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                {ringMembers.map((member, idx) => {
-                  return (
-                    <div
-                      key={idx}
-                      className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 transition-colors ${
-                        member.isSelf
-                          ? 'bg-violet-950/30 border-violet-700/60 text-violet-200'
-                          : 'bg-slate-950/60 border-slate-800 text-slate-300'
-                      }`}
-                    >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-200 truncate">{member.label}</span>
-                          {member.isSelf ? (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-violet-600 text-white font-medium">
-                              あなた
-                            </span>
-                          ) : (
-                            <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-400">
-                              おとり #{idx + 1}
-                            </span>
-                          )}
-                        </div>
-                        <div className="font-mono text-[10px] text-slate-400 truncate mt-0.5">
-                          {member.publicKeyHex}
-                        </div>
-                      </div>
+              <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                {ringMembers.map((member, idx) => (
+                  <div
+                    key={member.publicKeyHex + idx}
+                    className={`flex items-center justify-between p-2 rounded-lg border text-[11px] ${
+                      member.isSelf
+                        ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-200'
+                        : 'bg-slate-950 border-slate-800 text-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <span className="font-mono text-slate-500 w-4">{idx + 1}.</span>
+                      <span className="font-medium truncate max-w-[130px]">{member.label}</span>
+                      <span className="font-mono text-slate-400 truncate max-w-[200px]">
+                        {member.publicKeyHex.slice(0, 16)}...{member.publicKeyHex.slice(-8)}
+                      </span>
+                    </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-2 shrink-0">
+                      {member.isSelf ? (
+                        <span className="px-1.5 py-0.5 bg-indigo-900/60 text-indigo-300 rounded text-[10px] font-semibold">
+                          あなた (署名者)
+                        </span>
+                      ) : (
                         <button
                           type="button"
-                          onClick={() => handleCopy(member.publicKeyHex, `pub-${idx}`)}
-                          className="p-1 rounded text-slate-400 hover:text-slate-200 hover:bg-slate-800"
-                          title="公開鍵をコピー"
+                          onClick={() => handleRemoveMember(member.publicKeyHex)}
+                          className="text-slate-500 hover:text-rose-400 p-1"
+                          title="リングから削除"
                         >
-                          {copiedKey === `pub-${idx}` ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
+                          <Trash2 className="w-3.5 h-3.5" />
                         </button>
-                        {!member.isSelf && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveMember(idx)}
-                            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-slate-800"
-                            title="リングから削除"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
+                      )}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
 
-              {/* Add Custom Member Form */}
-              <div className="pt-2 border-t border-slate-800/80 flex flex-col sm:flex-row gap-2">
+              {/* Add Custom Member */}
+              <div className="pt-2 border-t border-slate-800 flex flex-col sm:flex-row gap-2">
                 <input
                   type="text"
                   value={newMemberLabel}
                   onChange={(e) => setNewMemberLabel(e.target.value)}
-                  placeholder="ラベル (例: 財務部長)"
-                  className="sm:w-1/3 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-violet-500 text-[11px]"
+                  placeholder="ラベル (例: 同僚A)"
+                  className="w-full sm:w-28 p-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <input
                   type="text"
                   value={newMemberPub}
                   onChange={(e) => setNewMemberPub(e.target.value)}
-                  placeholder="Ed25519 公開鍵 (64文字Hex)"
-                  className="flex-1 px-2.5 py-1.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono focus:outline-none focus:border-violet-500 text-[11px]"
+                  placeholder="追加するEd25519公開鍵Hex (64文字)..."
+                  className="flex-1 p-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 font-mono text-xs focus:outline-none focus:border-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={handleAddCustomMember}
-                  className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium flex items-center justify-center gap-1 shrink-0 text-[11px]"
+                  className="px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center justify-center gap-1 shrink-0 transition-colors shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>追加</span>
@@ -481,105 +513,83 @@ export const RingSignatureTool: React.FC = () => {
             </div>
 
             {signError && (
-              <div className="p-3 bg-rose-950/40 border border-rose-800 rounded-lg text-rose-300">
-                {signError}
+              <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{signError}</span>
               </div>
             )}
 
             <button
               type="button"
               onClick={handleSign}
-              disabled={isSigning || ringMembers.length < 2}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-violet-950/40 transition-all text-sm"
+              disabled={isSigning || !myKeyPair.secretKeyHex || !signMessage.trim()}
+              className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm text-xs"
             >
-              {isSigning ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>リング署名を計算中...</span>
-                </>
-              ) : (
-                <>
-                  <FileSignature className="w-4 h-4" />
-                  <span>匿名リング署名を生成 ({ringMembers.length}人リング)</span>
-                </>
-              )}
+              <FileSignature className="w-4 h-4" />
+              <span>{isSigning ? '署名を計算中...' : 'リング署名を作成 (1/N 匿名化)'}</span>
             </button>
           </div>
 
-          {/* Right Column: Signature Output */}
+          {/* Right Column: Signature Result */}
           <div className="lg:col-span-5 space-y-4 text-xs">
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-                <div className="font-bold text-slate-200 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-violet-400" />
-                  <span>生成されたリング署名パッケージ</span>
-                </div>
-                {generatedSignature && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-400 border border-emerald-800 font-medium">
-                    生成成功
-                  </span>
-                )}
-              </div>
-
-              {generatedSignature ? (
-                <div className="space-y-3">
-                  <div className="p-3 bg-violet-950/20 border border-violet-800/40 rounded-lg space-y-1 text-slate-300">
-                    <div className="font-semibold text-violet-300 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-violet-400" />
-                      <span>完全匿名性の数学的保証</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      署名データにはあなたの公開鍵・秘密鍵の識別情報は一切露出しません。第三者から見ると、リング内のどのメンバーも等しい確率で署名者候補となります。
-                    </p>
+            {generatedSignature ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+                  <div className="flex items-center gap-1.5 text-emerald-400 font-semibold">
+                    <Check className="w-4 h-4" />
+                    <span>リング署名作成完了</span>
                   </div>
-
-                  <div className="space-y-1">
-                    <div className="flex justify-between items-center text-[11px] text-slate-400">
-                      <span>署名パッケージ JSON:</span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          handleCopy(JSON.stringify(generatedSignature, null, 2), 'sigJson')
-                        }
-                        className="text-violet-400 hover:text-violet-300 flex items-center gap-1"
-                      >
-                        {copiedKey === 'sigJson' ? (
-                          <Check className="w-3 h-3 text-emerald-400" />
-                        ) : (
-                          <Copy className="w-3 h-3" />
-                        )}
-                        <span>JSONコピー</span>
-                      </button>
-                    </div>
-                    <textarea
-                      readOnly
-                      value={JSON.stringify(generatedSignature, null, 2)}
-                      rows={12}
-                      className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[10px] text-slate-300 focus:outline-none select-all"
-                    />
-                  </div>
-
-                  <div className="flex gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      onClick={handleSendToVerify}
-                      className="flex-1 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-medium flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                      onClick={() => handleCopy(JSON.stringify(generatedSignature, null, 2), 'sigJson')}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex items-center gap-1 text-[11px]"
                     >
-                      <span>検証タブでテスト検証</span>
-                      <ArrowRight className="w-3.5 h-3.5" />
+                      {copiedKey === 'sigJson' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                      <span>コピー</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadPackage}
+                      className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded flex items-center gap-1 text-[11px]"
+                    >
+                      <Download className="w-3 h-3" />
+                      <span>保存</span>
                     </button>
                   </div>
                 </div>
-              ) : (
-                <div className="p-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-2">
-                  <FileSignature className="w-8 h-8 mx-auto text-slate-600" />
-                  <div className="text-slate-400 font-medium">署名が未生成です</div>
-                  <div className="text-[11px] text-slate-500">
-                    左側のパネルでメッセージを入力し、「匿名リング署名を生成」を実行してください。
+
+                <div className="space-y-2 p-3 bg-slate-950 border border-slate-800 rounded-xl">
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-400">匿名化リング規模:</span>
+                    <span className="font-mono font-bold text-indigo-300">{generatedSignature.ring.length} 名</span>
+                  </div>
+                  <div className="flex justify-between items-center text-[11px]">
+                    <span className="text-slate-400">外部からの特定確率:</span>
+                    <span className="font-mono font-bold text-emerald-400">
+                      1 / {generatedSignature.ring.length} ({((1 / generatedSignature.ring.length) * 100).toFixed(1)}%)
+                    </span>
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div>
+                  <span className="text-[11px] font-semibold text-slate-400 block mb-1">
+                    署名パッケージ JSON (署名検証タブへ共有可)
+                  </span>
+                  <pre className="p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[10px] text-slate-300 max-h-60 overflow-y-auto select-all whitespace-pre-wrap break-all leading-normal">
+                    {JSON.stringify(generatedSignature, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-900/50 border border-dashed border-slate-800 rounded-xl p-8 text-center space-y-2">
+                <Users className="w-8 h-8 text-slate-600 mx-auto" />
+                <div className="text-slate-400 font-semibold text-xs">署名が未生成です</div>
+                <div className="text-[11px] text-slate-500">
+                  左側で鍵とおとりを設定し、メッセージを入力して「リング署名を作成」を実行してください
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -587,66 +597,50 @@ export const RingSignatureTool: React.FC = () => {
       {/* Mode 2: Verify Tab */}
       {activeTab === 'verify' && (
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 text-xs">
-          {/* Input JSON */}
           <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-slate-800">
-              <div className="font-bold text-slate-200 flex items-center gap-1.5">
-                <FileSignature className="w-4 h-4 text-violet-400" />
-                <span>検証対象リング署名 (JSON)</span>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  if (generatedSignature) {
-                    setVerifyInputJson(JSON.stringify(generatedSignature, null, 2));
-                  }
-                }}
-                className="text-[11px] text-violet-400 hover:text-violet-300"
-              >
-                生成済み署名を貼り付け
-              </button>
+              <h3 className="font-semibold text-slate-200">検証用 署名パッケージ (JSON)</h3>
+              {generatedSignature && (
+                <button
+                  type="button"
+                  onClick={() => setVerifyInputJson(JSON.stringify(generatedSignature, null, 2))}
+                  className="text-[11px] text-indigo-400 hover:text-indigo-300"
+                >
+                  生成済み署名を貼り付け
+                </button>
+              )}
             </div>
 
             <textarea
               value={verifyInputJson}
               onChange={(e) => setVerifyInputJson(e.target.value)}
-              rows={14}
+              rows={12}
               placeholder="リング署名パッケージ JSON を貼り付けてください..."
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-200 focus:outline-none focus:border-violet-500 leading-normal"
+              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg font-mono text-[11px] text-slate-200 focus:outline-none focus:border-indigo-500 leading-normal"
             />
 
             <button
               type="button"
               onClick={handleVerify}
               disabled={isVerifying}
-              className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-lg shadow-violet-950/40 transition-all text-sm"
+              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold flex items-center justify-center gap-2 transition-colors shadow-sm text-xs"
             >
-              {isVerifying ? (
-                <>
-                  <RefreshCw className="w-4 h-4 animate-spin" />
-                  <span>リング方程式を検証中...</span>
-                </>
-              ) : (
-                <>
-                  <ShieldCheck className="w-4 h-4" />
-                  <span>署名を数学的に検証 (Verify)</span>
-                </>
-              )}
+              <ShieldCheck className="w-4 h-4" />
+              <span>{isVerifying ? 'リング方程式を検証中...' : '署名を数学的に検証 (Verify)'}</span>
             </button>
           </div>
 
-          {/* Verification Results Panel */}
           <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-            <h3 className="font-bold text-slate-200 pb-2 border-b border-slate-800">
+            <h3 className="font-semibold text-slate-200 pb-2 border-b border-slate-800">
               検証結果 &amp; 暗号学的証明
             </h3>
 
             {verificationResult ? (
               <div className="space-y-4">
                 {verificationResult.isValid ? (
-                  <div className="p-4 bg-emerald-950/30 border border-emerald-700/60 rounded-xl space-y-2">
-                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-sm">
-                      <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
+                  <div className="p-4 bg-emerald-950/30 border border-emerald-700/60 rounded-xl space-y-1.5">
+                    <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs">
+                      <ShieldCheck className="w-4 h-4 shrink-0" />
                       <span>真正なリング署名 (VALID)</span>
                     </div>
                     <p className="text-[11px] text-slate-300 leading-relaxed">
@@ -654,63 +648,41 @@ export const RingSignatureTool: React.FC = () => {
                     </p>
                   </div>
                 ) : (
-                  <div className="p-4 bg-rose-950/30 border border-rose-700/60 rounded-xl space-y-2">
-                    <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-                      <AlertTriangle className="w-5 h-5 text-rose-400 shrink-0" />
+                  <div className="p-4 bg-rose-950/30 border border-rose-700/60 rounded-xl space-y-1.5">
+                    <div className="flex items-center gap-2 text-rose-400 font-bold text-xs">
+                      <AlertTriangle className="w-4 h-4 shrink-0" />
                       <span>署名検証失敗 (INVALID)</span>
                     </div>
                     <p className="text-[11px] text-rose-200 leading-relaxed">
-                      {verificationResult.error || 'リング方程式が閉じませんでした。メッセージまたは公開鍵が改ざんされている可能性があります。'}
+                      {verificationResult.error || 'リング方程式が閉じませんでした。メッセージまたは公開鍵が改ざんされています。'}
                     </p>
                   </div>
                 )}
 
-                {/* Metrics */}
                 <div className="space-y-2 p-3 bg-slate-950 border border-slate-800 rounded-xl">
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-400">リングサイズ (候補人数):</span>
-                    <span className="font-mono font-bold text-slate-200">
-                      {verificationResult.ringSize} 名
-                    </span>
+                    <span className="text-slate-400">リングサイズ:</span>
+                    <span className="font-mono font-bold text-slate-200">{verificationResult.ringSize} 名</span>
                   </div>
                   <div className="flex justify-between items-center text-[11px]">
                     <span className="text-slate-400">署名者特定確率:</span>
-                    <span className="font-mono font-bold text-violet-300">
+                    <span className="font-mono font-bold text-indigo-300">
                       {verificationResult.isValid && verificationResult.ringSize > 0
                         ? `1 / ${verificationResult.ringSize} (${((1 / verificationResult.ringSize) * 100).toFixed(1)}%)`
                         : '0%'}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-400">匿名性評価:</span>
-                    <span className="font-semibold text-emerald-400">
-                      {verificationResult.anonymityScore}
-                    </span>
+                    <span className="text-slate-400">匿名性スコア:</span>
+                    <span className="font-semibold text-emerald-400">{verificationResult.anonymityScore}</span>
                   </div>
-                  <div className="flex justify-between items-center text-[11px]">
-                    <span className="text-slate-400">検証アルゴリズム:</span>
-                    <span className="font-mono text-slate-300">Ed25519-SAG (Schnorr Ring)</span>
-                  </div>
-                </div>
-
-                {/* Tamper testing hint */}
-                <div className="p-3 bg-slate-950/60 border border-slate-800/80 rounded-lg space-y-1 text-slate-400 text-[11px]">
-                  <div className="font-semibold text-slate-300 flex items-center gap-1">
-                    <Info className="w-3.5 h-3.5 text-violet-400" />
-                    <span>改ざん耐性テスト</span>
-                  </div>
-                  <p>
-                    左のJSONでメッセージ（"message"）の文字を1文字変えるか、公開鍵を1文字でも変更して再検証してみてください。リング方程式が即座に崩壊し、不正が検知されます。
-                  </p>
                 </div>
               </div>
             ) : (
-              <div className="p-12 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-2">
+              <div className="p-8 text-center text-slate-500 border border-dashed border-slate-800 rounded-lg space-y-1">
                 <ShieldAlert className="w-8 h-8 mx-auto text-slate-600" />
                 <div className="text-slate-400 font-medium">検証が未実行です</div>
-                <div className="text-[11px] text-slate-500">
-                  左側に署名JSONを入力して「署名を数学的に検証」をクリックしてください。
-                </div>
+                <div className="text-[11px] text-slate-500">左側に署名JSONを入力して検証を実行してください</div>
               </div>
             )}
           </div>

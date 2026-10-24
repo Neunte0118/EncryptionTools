@@ -201,7 +201,7 @@ export default function App() {
     // 鍵管理
     { id: 'vault', title: '暗号化鍵保管庫', icon: FolderKey, category: 'vault', badge: vault.keys.length > 0 ? vault.keys.length : undefined },
     { id: 'two-factor', title: '2要素認証管理', icon: KeyRound, category: 'vault' },
-    { id: 'generator', title: '暗号鍵ペア生成', icon: PlusCircle, category: 'vault' },
+    { id: 'generator', title: '暗号鍵生成', icon: PlusCircle, category: 'vault' },
     { id: 'random', title: '暗号論的擬似乱数生成', icon: Dices, category: 'vault' },
 
     // 暗号化・復号
@@ -378,6 +378,7 @@ export default function App() {
               vault={vault}
               onVaultChange={handleVaultChange}
               onSelectKeyForAction={handleSelectKeyForAction}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />
           )}
 
@@ -387,6 +388,8 @@ export default function App() {
               vault={vault}
               onVaultChange={handleVaultChange}
               onNavigateToVault={() => handleSelectTab('vault')}
+              onSelectTab={handleSelectTab}
+              onSelectKeyForAction={handleSelectKeyForAction}
             />
           )}
           {activeTab === 'random' && <RandomGeneratorTool />}
@@ -407,10 +410,16 @@ export default function App() {
                   : null
               }
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />
           )}
 
-          {activeTab === 'chacha' && <ChaCha20Tool />}
+          {activeTab === 'chacha' && (
+            <ChaCha20Tool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
 
           {activeTab === 'rsa' && (
             <RsaTool
@@ -421,6 +430,7 @@ export default function App() {
                   : null
               }
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />
           )}
 
@@ -433,15 +443,36 @@ export default function App() {
                   : null
               }
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />
           )}
 
-          {activeTab === 'pqc' && <PostQuantumCryptoTool />}
+          {activeTab === 'pqc' && (
+            <PostQuantumCryptoTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
           {activeTab === 'visual-crypto' && <VisualCryptographyTool />}
-          {activeTab === 'fhe' && <FheTool />}
-          {activeTab === 'abe' && <AbeTool />}
+          {activeTab === 'fhe' && (
+            <FheTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
+          {activeTab === 'abe' && (
+            <AbeTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
           {activeTab === 'timelock' && <TimelockCryptoTool />}
-          {activeTab === 'pgp' && <PgpStudioTool />}
+          {activeTab === 'pgp' && (
+            <PgpStudioTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
 
           {activeTab === 'self-decrypt' && <SelfDecryptingPackageTool />}
           {activeTab === 'shamir' && <ShamirSecretSharingTool />}
@@ -468,9 +499,15 @@ export default function App() {
                   : null
               }
               onClearSelectedKey={() => setSelectedKeyForAction(null)}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />
           )}
-          {activeTab === 'ring-signature' && <RingSignatureTool />}
+          {activeTab === 'ring-signature' && (
+            <RingSignatureTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
           {activeTab === 'action-pipeline' && <ActionPipelinesTool vault={vault} />}
         </main>
       </div>

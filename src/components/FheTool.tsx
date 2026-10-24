@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
 import {
-  generatePaillierKeys,
   paillierEncrypt,
   paillierDecrypt,
   paillierAdd,
@@ -33,13 +32,69 @@ import {
   FileCode,
 } from 'lucide-react';
 
-export const FheTool: React.FC = () => {
+import { KeyVaultFile } from '../types/crypto';
+import { ShieldAlert } from 'lucide-react';
+
+interface Props {
+  vault?: KeyVaultFile;
+  onNavigateToKeyGenerator?: () => void;
+}
+
+// Fallback constant demo Paillier key pair (256-bit) to guarantee zero on-the-fly key generation outside KeyGeneratorTool
+const FALLBACK_PAILLIER_KEYS = {
+  publicKey: {
+    n: 0xb5a76c8c3bb48adbb33f5727a3c3c7e426db47fb8a4c87cb7e4fd9a52758ca9an,
+    n2: 0x811568c07c2a71a947702410a5e8c187e07a6ec49b2fdfb9ca39366f0653c155d0458dfb6928cb05470ef241775f0a71970b80ef7ba063717df30fb93cfcf0f0n,
+    g: 0xb5a76c8c3bb48adbb33f5727a3c3c7e426db47fb8a4c87cb7e4fd9a52758ca9bn,
+    bitLength: 256,
+  },
+  privateKey: {
+    lambda: 0x5ad3b6461dd2456dd99fae5e6e1e3f22136da3fcd52643e5bf27eca293ac654cn,
+    mu: 0x6e9f29bf6d9102c918ecaa426c19fdfb40d5885c4bf4aaeeea8daae45a165b45n,
+    publicKey: {
+      n: 0xb5a76c8c3bb48adbb33f5727a3c3c7e426db47fb8a4c87cb7e4fd9a52758ca9an,
+      n2: 0x811568c07c2a71a947702410a5e8c187e07a6ec49b2fdfb9ca39366f0653c155d0458dfb6928cb05470ef241775f0a71970b80ef7ba063717df30fb93cfcf0f0n,
+      g: 0xb5a76c8c3bb48adbb33f5727a3c3c7e426db47fb8a4c87cb7e4fd9a52758ca9bn,
+      bitLength: 256,
+    },
+  },
+};
+
+export const FheTool: React.FC<Props> = ({ vault, onNavigateToKeyGenerator }) => {
   const [activeSubTab, setActiveSubTab] = useState<'dataset' | 'aggregate' | 'decrypt' | 'keys'>('dataset');
 
+  const vaultFheKeys = (vault?.keys || []).filter((k) => k.type === 'fhe');
+  const [selectedVaultKeyId, setSelectedVaultKeyId] = useState<string>(() => vaultFheKeys[0]?.id || '');
+
   // Key Pair State
-  const [paillierKeys, setPaillierKeys] = useState<{ publicKey: PaillierPublicKey; privateKey: PaillierPrivateKey }>(() =>
-    generatePaillierKeys()
-  );
+  const [paillierKeys, setPaillierKeys] = useState<{ publicKey: PaillierPublicKey; privateKey: PaillierPrivateKey }>(() => {
+    if (vaultFheKeys.length > 0) {
+      try {
+        const item = vaultFheKeys[0];
+        const pub = parsePaillierPublicKey(JSON.parse(item.publicKeyPem || '{}'));
+        const priv = parsePaillierPrivateKey(JSON.parse(item.privateKeyPem || '{}'));
+        return { publicKey: pub, privateKey: priv };
+      } catch (e) {
+        // Fallback
+      }
+    }
+    return FALLBACK_PAILLIER_KEYS;
+  });
+
+  const handleSelectVaultKey = (keyId: string) => {
+    setSelectedVaultKeyId(keyId);
+    const found = vaultFheKeys.find((k) => k.id === keyId);
+    if (found) {
+      try {
+        const pub = parsePaillierPublicKey(JSON.parse(found.publicKeyPem || '{}'));
+        const priv = parsePaillierPrivateKey(JSON.parse(found.privateKeyPem || '{}'));
+        setPaillierKeys({ publicKey: pub, privateKey: priv });
+        setKeyStatusMessage(`保管庫から鍵「${found.title}」を読み込みました`);
+      } catch (err: any) {
+        setKeyStatusMessage('保管庫の鍵パースに失敗しました');
+      }
+    }
+  };
 
   // Tab 1: Dataset Encryption State
   const [datasetTitle, setDatasetTitle] = useState('機密データセット');
@@ -328,11 +383,6 @@ export const FheTool: React.FC = () => {
   // -------------------------------------------------------------
   // Tab 4 Handlers: Key Pair Management
   // -------------------------------------------------------------
-  const handleRegenerateKeys = () => {
-    const fresh = generatePaillierKeys();
-    setPaillierKeys(fresh);
-    setKeyStatusMessage('新規Paillier鍵ペアを生成しました');
-  };
 
   const handleExportPublicKey = () => {
     const obj = serializePaillierPublicKey(paillierKeys.publicKey);
@@ -404,16 +454,34 @@ export const FheTool: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto text-xs">
+      {/* Strict Central Key Generation Notice Banner */}
+      <div className="p-3 bg-indigo-950/40 border border-indigo-700/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-indigo-300 font-medium">
+          <ShieldAlert className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
+        </div>
+        {onNavigateToKeyGenerator && (
+          <button
+            type="button"
+            onClick={onNavigateToKeyGenerator}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shrink-0 text-xs shadow-sm transition-colors flex items-center justify-center gap-1.5"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>「暗号鍵生成」で新しいPaillier鍵を作成</span>
+          </button>
+        )}
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-cyan-600/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
             <Cpu className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-100">完全準同型暗号スタジオ</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 font-mono font-medium">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-mono font-medium">
                 Paillier 準同型暗号系
               </span>
             </div>
@@ -427,7 +495,7 @@ export const FheTool: React.FC = () => {
             onClick={() => setActiveSubTab('dataset')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeSubTab === 'dataset'
-                ? 'bg-cyan-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -439,7 +507,7 @@ export const FheTool: React.FC = () => {
             onClick={() => setActiveSubTab('aggregate')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeSubTab === 'aggregate'
-                ? 'bg-cyan-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -451,7 +519,7 @@ export const FheTool: React.FC = () => {
             onClick={() => setActiveSubTab('decrypt')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeSubTab === 'decrypt'
-                ? 'bg-cyan-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -463,7 +531,7 @@ export const FheTool: React.FC = () => {
             onClick={() => setActiveSubTab('keys')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeSubTab === 'keys'
-                ? 'bg-cyan-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -479,7 +547,7 @@ export const FheTool: React.FC = () => {
           <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-slate-200 flex items-center gap-2">
-                <Lock className="w-4 h-4 text-cyan-400" />
+                <Lock className="w-4 h-4 text-indigo-400" />
                 <span>機密データの入力と暗号化登録</span>
               </h3>
               <div className="flex items-center gap-2">
@@ -852,28 +920,53 @@ export const FheTool: React.FC = () => {
       {/* Sub-Tab 4: Key Management */}
       {activeSubTab === 'keys' && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="font-bold text-slate-200 flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-cyan-400" />
-                <span>Paillier 準同型暗号 鍵ペア管理</span>
+                <KeyRound className="w-4 h-4 text-indigo-400" />
+                <span>Paillier 準同型暗号 鍵管理</span>
               </h3>
               <p className="text-slate-400 text-[11px] mt-0.5">
                 公開鍵はデータの暗号化およびサーバー合算演算に使用し、秘密鍵は手元で厳重に保管して結果の復号にのみ使用します。
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleRegenerateKeys}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium flex items-center gap-1.5 text-xs border border-slate-700"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>鍵ペア再生成</span>
-            </button>
+            {onNavigateToKeyGenerator && (
+              <button
+                type="button"
+                onClick={onNavigateToKeyGenerator}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 text-xs shadow-sm self-start sm:self-auto"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>「暗号鍵生成」で新規作成</span>
+              </button>
+            )}
           </div>
 
+          {/* Vault Key Selection */}
+          {vaultFheKeys.length > 0 && (
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-300 font-semibold text-xs">暗号化鍵保管庫から選択:</span>
+                <select
+                  value={selectedVaultKeyId}
+                  onChange={(e) => handleSelectVaultKey(e.target.value)}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-indigo-300 text-xs focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  {vaultFheKeys.map((k) => (
+                    <option key={k.id} value={k.id}>
+                      {k.title} ({new Date(k.createdAt).toLocaleDateString()})
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <span className="text-[11px] text-slate-400 font-mono">
+                登録済みPaillier鍵: {vaultFheKeys.length} 件
+              </span>
+            </div>
+          )}
+
           {keyStatusMessage && (
-            <div className="p-2.5 bg-cyan-950/40 border border-cyan-800 rounded-lg text-cyan-300 font-medium">
+            <div className="p-2.5 bg-indigo-950/40 border border-indigo-800 rounded-lg text-indigo-300 font-medium">
               {keyStatusMessage}
             </div>
           )}
@@ -883,7 +976,7 @@ export const FheTool: React.FC = () => {
             <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-slate-200 text-xs">公開鍵ファイル</span>
-                <span className="text-[10px] font-mono text-cyan-400">{paillierKeys.publicKey.bitLength} bit</span>
+                <span className="text-[10px] font-mono text-indigo-400">{paillierKeys.publicKey.bitLength} bit</span>
               </div>
               <div className="p-2.5 bg-slate-900 rounded border border-slate-800 font-mono text-[10px] text-slate-400 break-all select-all max-h-24 overflow-y-auto">
                 Modulus n: {paillierKeys.publicKey.n.toString(16)}
@@ -892,7 +985,7 @@ export const FheTool: React.FC = () => {
                 <button
                   type="button"
                   onClick={handleExportPublicKey}
-                  className="flex-1 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs flex items-center justify-center gap-1 shadow-sm"
+                  className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-1 shadow-sm"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>公開鍵保存</span>

@@ -581,3 +581,26 @@ export async function decryptWithUserKey(
   }
 }
 
+export function serializeMasterAuthority(authority: MasterAuthority) {
+  return {
+    format: 'ABE_MASTER_AUTHORITY',
+    version: 1,
+    masterSecretKeyHex: authority.masterSecretKeyHex,
+    publicParamsId: authority.publicParamsId,
+    createdAt: authority.createdAt,
+  };
+}
+
+export function serializeUserSecretKey(key: UserSecretKey) {
+  return {
+    format: 'ABE_USER_KEY',
+    version: 1,
+    authorityId: key.authorityId,
+    userId: key.userId,
+    attributes: key.attributes,
+    userBlindingHex: key.userBlindingHex,
+    attributeTokens: key.attributeTokens,
+    createdAt: key.createdAt,
+  };
+}
+

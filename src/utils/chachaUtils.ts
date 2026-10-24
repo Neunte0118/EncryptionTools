@@ -309,3 +309,125 @@ export async function chacha20DecryptFile(
   ) as ArrayBuffer;
   return { fileName: 'decrypted.bin', fileData: outBuffer, variant };
 }
+
+/**
+ * Encrypt directly using a 32-byte (256-bit) raw key generated in KeyGeneratorTool
+ */
+export async function chacha20EncryptWithRawKey(
+  plaintext: string | ArrayBuffer,
+  rawKeyBytes: Uint8Array,
+  variant: ChaChaVariant = 'chacha20-poly1305'
+): Promise<{ combinedBase64: string; nonceHex: string; variant: ChaChaVariant }> {
+  if (rawKeyBytes.length !== 32) {
+    throw new Error(`ChaCha20 の共通鍵は 32 バイト (256 bit) である必要があります (指定長: ${rawKeyBytes.length} バイト)`);
+  }
+  const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+  const nonce = window.crypto.getRandomValues(new Uint8Array(nonceLen));
+
+  const plainBytes = typeof plaintext === 'string'
+    ? new TextEncoder().encode(plaintext)
+    : new Uint8Array(plaintext);
+
+  let encrypted: Uint8Array;
+  if (variant === 'xchacha20-poly1305') {
+    const cipher = xchacha20poly1305(rawKeyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  } else if (variant === 'chacha20-raw') {
+    encrypted = chacha20(rawKeyBytes, nonce, plainBytes);
+  } else if (variant === 'xsalsa20-poly1305') {
+    const cipher = xsalsa20poly1305(rawKeyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  } else {
+    const cipher = chacha20poly1305(rawKeyBytes, nonce);
+    encrypted = cipher.encrypt(plainBytes);
+  }
+
+  let variantByte = 0;
+  if (variant === 'xchacha20-poly1305') variantByte = 1;
+  else if (variant === 'chacha20-raw') variantByte = 2;
+  else if (variant === 'xsalsa20-poly1305') variantByte = 3;
+
+  // Prefix with 0xFF marker to indicate raw-key mode, then variantByte, then nonce, then ciphertext
+  const combined = new Uint8Array(2 + nonce.length + encrypted.length);
+  combined[0] = 0xff; // marker for raw key
+  combined[1] = variantByte;
+  combined.set(nonce, 2);
+  combined.set(encrypted, 2 + nonce.length);
+
+  return {
+    combinedBase64: bufferToBase64(combined.buffer as ArrayBuffer),
+    nonceHex: bufferToHex(nonce.buffer as ArrayBuffer),
+    variant,
+  };
+}
+
+/**
+ * Decrypt directly using a 32-byte (256-bit) raw key
+ */
+export async function chacha20DecryptWithRawKey(
+  combinedBase64: string,
+  rawKeyBytes: Uint8Array,
+  forceVariant?: ChaChaVariant
+): Promise<{ text?: string; buffer: ArrayBuffer; detectedVariant?: ChaChaVariant }> {
+  if (rawKeyBytes.length !== 32) {
+    throw new Error(`ChaCha20 の共通鍵は 32 バイト (256 bit) である必要があります (指定長: ${rawKeyBytes.length} バイト)`);
+  }
+  const combined = new Uint8Array(base64ToBuffer(combinedBase64));
+  if (combined.length < 14) {
+    throw new Error('暗号文の長さが不足しています');
+  }
+
+  let variant: ChaChaVariant = 'chacha20-poly1305';
+  let nonce: Uint8Array;
+  let encrypted: Uint8Array;
+
+  if (combined[0] === 0xff) {
+    const variantTag = combined[1];
+    if (variantTag === 1) variant = 'xchacha20-poly1305';
+    else if (variantTag === 2) variant = 'chacha20-raw';
+    else if (variantTag === 3) variant = 'xsalsa20-poly1305';
+    else variant = 'chacha20-poly1305';
+
+    if (forceVariant) variant = forceVariant;
+    const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+    nonce = combined.subarray(2, 2 + nonceLen);
+    encrypted = combined.subarray(2 + nonceLen);
+  } else {
+    // If not prefixed with 0xff, treat as raw nonce + cipher
+    if (forceVariant) variant = forceVariant;
+    const nonceLen = (variant === 'xchacha20-poly1305' || variant === 'xsalsa20-poly1305') ? 24 : 12;
+    nonce = combined.subarray(0, nonceLen);
+    encrypted = combined.subarray(nonceLen);
+  }
+
+  let decrypted: Uint8Array;
+  try {
+    if (variant === 'xchacha20-poly1305') {
+      const cipher = xchacha20poly1305(rawKeyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else if (variant === 'chacha20-raw') {
+      decrypted = chacha20(rawKeyBytes, nonce, encrypted);
+    } else if (variant === 'xsalsa20-poly1305') {
+      const cipher = xsalsa20poly1305(rawKeyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    } else {
+      const cipher = chacha20poly1305(rawKeyBytes, nonce);
+      decrypted = cipher.decrypt(encrypted);
+    }
+  } catch {
+    throw new Error('復号に失敗しました。共通鍵が異なるか、選択した暗号規格が一致しません');
+  }
+
+  const arrayBuffer = decrypted.buffer.slice(
+    decrypted.byteOffset,
+    decrypted.byteOffset + decrypted.byteLength
+  ) as ArrayBuffer;
+
+  let text: string | undefined = undefined;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(arrayBuffer);
+  } catch {}
+
+  return { text, buffer: arrayBuffer, detectedVariant: variant };
+}
+

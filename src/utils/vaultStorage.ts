@@ -76,6 +76,9 @@ function normalizeKeyItem(k: any): KeyVaultItem {
     publicKeyPem: k.publicKeyPem || undefined,
     privateKeyPem: k.privateKeyPem || undefined,
     rawKeyBase64: k.rawKeyBase64 || undefined,
+    rawKeyHex: k.rawKeyHex || undefined,
+    armoredKey: k.armoredKey || undefined,
+    extraData: k.extraData || undefined,
     createdAt: k.createdAt || new Date().toISOString(),
     updatedAt: k.updatedAt || new Date().toISOString(),
   };

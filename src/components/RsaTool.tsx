@@ -35,12 +35,14 @@ interface Props {
     key: KeyVaultItem;
   } | null;
   onClearSelectedKey?: () => void;
+  onNavigateToKeyGenerator?: () => void;
 }
 
 export const RsaTool: React.FC<Props> = ({
   vault,
   selectedKey,
   onClearSelectedKey,
+  onNavigateToKeyGenerator,
 }) => {
   const [action, setAction] = useState<'encrypt' | 'decrypt'>('encrypt');
   const [targetType, setTargetType] = useState<'text' | 'file'>('text');
@@ -76,11 +78,13 @@ export const RsaTool: React.FC<Props> = ({
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const rsaVaultKeys = vault.keys.filter((k) => k.type === 'rsa-oaep');
+  const rsaVaultKeys = vault.keys.filter(
+    (k) => k.type === 'rsa-oaep' || k.type === 'rsa-pss' || k.type === 'rsa-pkcs1'
+  );
 
   // Sync selected key from vault
   useEffect(() => {
-    if (selectedKey && selectedKey.key.type === 'rsa-oaep') {
+    if (selectedKey && selectedKey.key.type.startsWith('rsa')) {
       setAction(selectedKey.action);
       setSelectedVaultKeyId(selectedKey.key.id);
       if (selectedKey.key.publicKeyPem) {
@@ -88,6 +92,9 @@ export const RsaTool: React.FC<Props> = ({
       }
       if (selectedKey.key.privateKeyPem) {
         setPrivateKeyPem(selectedKey.key.privateKeyPem);
+      }
+      if (selectedKey.key.algorithmDetails?.hash) {
+        setHashAlgo(selectedKey.key.algorithmDetails.hash as HashAlgorithm);
       }
       onClearSelectedKey?.();
     }
@@ -104,7 +111,7 @@ export const RsaTool: React.FC<Props> = ({
     setTextError('');
     setCipherText('');
     if (!publicKeyPem.trim()) {
-      setTextError('暗号化に使用するRSA公開鍵 PEM を指定してください');
+      setTextError('暗号化に使用するRSA公開鍵 PEM を指定してください（「暗号鍵生成」ツールで生成可能）');
       return;
     }
     if (!plainText.trim()) {
@@ -129,11 +136,11 @@ export const RsaTool: React.FC<Props> = ({
     setTextError('');
     setDecryptedText('');
     if (!privateKeyPem.trim()) {
-      setTextError('復号に使用するRSA秘密鍵 PEM を指定してください');
+      setTextError('復号に使用するRSA秘密鍵 PEM を指定してください（「暗号鍵生成」ツールで生成可能）');
       return;
     }
     if (!cipherText.trim()) {
-      setTextError('復号する暗号文 Base64 を入力してください');
+      setTextError('復号するBase64暗号文を入力してください');
       return;
     }
 
@@ -143,13 +150,13 @@ export const RsaTool: React.FC<Props> = ({
       const decBuf = await rsaDecrypt(privateKeyPem.trim(), hashAlgo, cipherBuf);
       setDecryptedText(bufferToString(decBuf));
     } catch (err: any) {
-      setTextError(`復号エラー: ${err.message}`);
+      setTextError(err.message || 'RSA復号エラー: 鍵または暗号文が一致しません');
     } finally {
       setIsProcessingText(false);
     }
   };
 
-  // File Change
+  // File Handlers
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -166,7 +173,6 @@ export const RsaTool: React.FC<Props> = ({
     reader.readAsArrayBuffer(file);
   };
 
-  // File Action
   const handleFileAction = async () => {
     setFileError('');
     setFileSuccess(null);
@@ -187,7 +193,7 @@ export const RsaTool: React.FC<Props> = ({
           publicKeyPem.trim(),
           hashAlgo
         );
-        const outFilename = `${selectedFile.name}.rsa.enc`;
+        const outFilename = `${selectedFile.name}.rsa`;
         const blob = new Blob([outBuffer], { type: 'application/octet-stream' });
         const downloadUrl = URL.createObjectURL(blob);
         setFileSuccess({
@@ -224,16 +230,19 @@ export const RsaTool: React.FC<Props> = ({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-purple-600/20 text-purple-400 border border-purple-500/30 flex items-center justify-center shrink-0">
+          <div className="w-10 h-10 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
             <Lock className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-lg font-bold text-slate-100">RSA-OAEP</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-purple-950/80 text-purple-300 border border-purple-800/60 font-mono font-medium">
-                PKCS#1 v2.2
+              <h2 className="text-lg font-bold text-slate-100">RSA-OAEP 暗号化スタジオ</h2>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-medium">
+                PKCS#1 v2.2 (OAEP-{hashAlgo})
               </span>
             </div>
+            <p className="text-[11px] text-slate-400 mt-0.5">
+              NIST SP 800-56B 準拠 最適非対称暗号化パディング (OAEP) による公開鍵暗号化・ハイブリッドファイル暗号
+            </p>
           </div>
         </div>
 
@@ -250,7 +259,7 @@ export const RsaTool: React.FC<Props> = ({
               }}
               className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 action === 'encrypt'
-                  ? 'bg-purple-600 text-white shadow-sm'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -266,7 +275,7 @@ export const RsaTool: React.FC<Props> = ({
               }}
               className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 action === 'decrypt'
-                  ? 'bg-purple-600 text-white shadow-sm'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -286,7 +295,7 @@ export const RsaTool: React.FC<Props> = ({
               }}
               className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 targetType === 'text'
-                  ? 'bg-purple-600 text-white shadow-sm'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -302,7 +311,7 @@ export const RsaTool: React.FC<Props> = ({
               }}
               className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
                 targetType === 'file'
-                  ? 'bg-purple-600 text-white shadow-sm'
+                  ? 'bg-indigo-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
@@ -313,29 +322,46 @@ export const RsaTool: React.FC<Props> = ({
         </div>
       </div>
 
+      {/* Strict Key Notice Banner */}
+      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span className="flex items-center gap-2">
+          <Key className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
+        </span>
+        {onNavigateToKeyGenerator && (
+          <button
+            type="button"
+            onClick={onNavigateToKeyGenerator}
+            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
+          >
+            「暗号鍵生成」を開く
+          </button>
+        )}
+      </div>
+
       {/* Key & Hash Config */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
-            <Key className="w-3.5 h-3.5 text-purple-400" />
+            <Key className="w-3.5 h-3.5 text-indigo-400" />
             <span>鍵とハッシュの設定</span>
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">ハッシュ:</span>
+            <span className="text-[11px] text-slate-400">OAEP ハッシュ:</span>
             <select
               value={hashAlgo}
               onChange={(e) => setHashAlgo(e.target.value as HashAlgorithm)}
-              className="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-purple-500 font-mono"
+              className="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-indigo-500 font-mono"
             >
-              <option value="SHA-256">SHA-256</option>
+              <option value="SHA-256">SHA-256 (標準)</option>
               <option value="SHA-384">SHA-384</option>
               <option value="SHA-512">SHA-512</option>
-              <option value="SHA-1">SHA-1</option>
+              <option value="SHA-1">SHA-1 (互換性用)</option>
             </select>
           </div>
         </div>
 
-        {rsaVaultKeys.length > 0 && (
+        {rsaVaultKeys.length > 0 ? (
           <div>
             <select
               value={selectedVaultKeyId}
@@ -345,7 +371,7 @@ export const RsaTool: React.FC<Props> = ({
                 if (k?.publicKeyPem) setPublicKeyPem(k.publicKeyPem);
                 if (k?.privateKeyPem) setPrivateKeyPem(k.privateKeyPem);
               }}
-              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-purple-500"
+              className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
             >
               <option value="">保管庫の RSA キーを選択</option>
               {rsaVaultKeys.map((k) => (
@@ -355,66 +381,63 @@ export const RsaTool: React.FC<Props> = ({
               ))}
             </select>
           </div>
+        ) : (
+          <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
+            <span>保管庫に RSA キーが登録されていません</span>
+            {onNavigateToKeyGenerator && (
+              <button
+                type="button"
+                onClick={onNavigateToKeyGenerator}
+                className="text-indigo-400 hover:underline"
+              >
+                「暗号鍵生成」で生成する
+              </button>
+            )}
+          </div>
         )}
 
         {action === 'encrypt' ? (
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] text-slate-400">受取人のRSA公開鍵 PEM</label>
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300">公開鍵 SPKI PEM</label>
               <FileLoaderButton
-                label="公開鍵読込"
-                onFileLoaded={(content) => setPublicKeyPem(content)}
-                title="RSA公開鍵ファイル (.pem, .pub, .crt) を選択またはドロップ"
+                label="PEM読込"
+                onFileLoaded={(content) => setPublicKeyPem(content.trim())}
               />
             </div>
             <textarea
+              rows={3}
               value={publicKeyPem}
               onChange={(e) => setPublicKeyPem(e.target.value)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={async (e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f) setPublicKeyPem(await f.text());
-              }}
-              rows={3}
-              placeholder="-----BEGIN PUBLIC KEY-----"
-              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-purple-500"
+              placeholder="-----BEGIN PUBLIC KEY-----..."
+              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
             />
           </div>
         ) : (
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="text-[11px] text-slate-400">復号用のRSA秘密鍵 PEM</label>
-              <div className="flex items-center gap-2">
-                <FileLoaderButton
-                  label="秘密鍵読込"
-                  onFileLoaded={(content) => setPrivateKeyPem(content)}
-                  title="RSA秘密鍵ファイル (.pem, .key) を選択またはドロップ"
-                />
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold text-slate-300">秘密鍵 PKCS#8 PEM</label>
+              <div className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => setIsPrivRevealed(!isPrivRevealed)}
-                  className="text-[10px] text-purple-400 hover:text-purple-300 flex items-center gap-1"
+                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
                 >
                   {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
+                  <span>{isPrivRevealed ? '隠す' : '表示'}</span>
                 </button>
+                <FileLoaderButton
+                  label="PEM読込"
+                  onFileLoaded={(content) => setPrivateKeyPem(content.trim())}
+                />
               </div>
             </div>
             <textarea
-              value={privateKeyPem}
-              onChange={(e) => setPrivateKeyPem(e.target.value)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={async (e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f) setPrivateKeyPem(await f.text());
-              }}
               rows={3}
-              placeholder="-----BEGIN PRIVATE KEY-----"
-              className={`w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-purple-500 ${
-                !isPrivRevealed ? 'filter blur-[3px]' : ''
-              }`}
+              value={isPrivRevealed ? privateKeyPem : privateKeyPem.replace(/[^-]/g, '*')}
+              onChange={(e) => setPrivateKeyPem(e.target.value)}
+              placeholder="-----BEGIN PRIVATE KEY-----..."
+              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
             />
           </div>
         )}
@@ -423,13 +446,13 @@ export const RsaTool: React.FC<Props> = ({
       {/* TEXT MODE */}
       {targetType === 'text' && (
         <div className="space-y-5">
-          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-300">
+              <label className="text-xs font-semibold text-slate-200">
                 {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
               </label>
               <FileLoaderButton
-                label="ファイルから読込"
+                label="ファイル読込"
                 onFileLoaded={(content) => {
                   if (action === 'encrypt') setPlainText(content);
                   else setCipherText(content);
@@ -437,113 +460,77 @@ export const RsaTool: React.FC<Props> = ({
               />
             </div>
             <textarea
+              rows={4}
               value={action === 'encrypt' ? plainText : cipherText}
               onChange={(e) => {
                 if (action === 'encrypt') setPlainText(e.target.value);
                 else setCipherText(e.target.value);
               }}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={async (e) => {
-                e.preventDefault();
-                const f = e.dataTransfer.files?.[0];
-                if (f) {
-                  const txt = await f.text();
-                  if (action === 'encrypt') setPlainText(txt);
-                  else setCipherText(txt);
-                }
-              }}
-              rows={4}
-              placeholder={action === 'encrypt' ? 'テキストを入力' : 'Base64 暗号文を貼り付け'}
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-purple-500 font-mono"
+              placeholder={
+                action === 'encrypt'
+                  ? '暗号化したいテキストを入力...'
+                  : '復号したいBase64暗号文を入力...'
+              }
+              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
             />
+
+            {textError && (
+              <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{textError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={isProcessingText}
+              onClick={action === 'encrypt' ? handleTextEncrypt : handleTextDecrypt}
+              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
+            >
+              {action === 'encrypt' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+              <span>{isProcessingText ? '処理中...' : action === 'encrypt' ? '暗号化を実行' : '復号を実行'}</span>
+            </button>
           </div>
 
-          {textError && (
-            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/80 text-xs text-red-200 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div className="font-medium">{textError}</div>
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={action === 'encrypt' ? handleTextEncrypt : handleTextDecrypt}
-            disabled={
-              isProcessingText ||
-              (action === 'encrypt' ? !plainText.trim() || !publicKeyPem.trim() : !cipherText.trim() || !privateKeyPem.trim())
-            }
-            className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {action === 'encrypt' ? (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>暗号化を実行</span>
-              </>
-            ) : (
-              <>
-                <Unlock className="w-4 h-4" />
-                <span>復号を実行</span>
-              </>
-            )}
-          </button>
-
           {action === 'encrypt' && cipherText && (
-            <div className="bg-slate-900/70 border border-purple-900/50 rounded-xl p-4 space-y-3">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  暗号化結果 Base64
+                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>暗号化結果 (Base64)</span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleCopy(cipherText, 'rsa-cipher')}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1"
+                  onClick={() => handleCopy(cipherText, 'cipher')}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1 transition-colors"
                 >
-                  {copiedId === 'rsa-cipher' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>コピー済み</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>コピー</span>
-                    </>
-                  )}
+                  {copiedId === 'cipher' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedId === 'cipher' ? 'コピー完了' : 'コピー'}</span>
                 </button>
               </div>
               <textarea
                 readOnly
                 value={cipherText}
                 rows={4}
-                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-purple-300 text-xs font-mono select-all focus:outline-none"
+                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono select-all focus:outline-none"
               />
             </div>
           )}
 
           {action === 'decrypt' && decryptedText && (
-            <div className="bg-slate-900/70 border border-purple-900/50 rounded-xl p-4 space-y-3">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-purple-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  復号テキスト
+                <span className="text-xs font-semibold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>復号結果 (平文)</span>
                 </span>
                 <button
                   type="button"
-                  onClick={() => handleCopy(decryptedText, 'rsa-plain')}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold flex items-center gap-1"
+                  onClick={() => handleCopy(decryptedText, 'decrypted')}
+                  className="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1 transition-colors"
                 >
-                  {copiedId === 'rsa-plain' ? (
-                    <>
-                      <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>コピー済み</span>
-                    </>
-                  ) : (
-                    <>
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>コピー</span>
-                    </>
-                  )}
+                  {copiedId === 'decrypted' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedId === 'decrypted' ? 'コピー完了' : 'コピー'}</span>
                 </button>
               </div>
               <textarea
@@ -560,8 +547,8 @@ export const RsaTool: React.FC<Props> = ({
       {/* FILE MODE */}
       {targetType === 'file' && (
         <div className="space-y-5">
-          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
-            <label className="text-xs font-bold text-slate-300">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
+            <label className="text-xs font-semibold text-slate-200 block">
               {action === 'encrypt' ? '暗号化するファイル' : '復号する暗号化ファイル'}
             </label>
             <input
@@ -572,71 +559,61 @@ export const RsaTool: React.FC<Props> = ({
             />
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="border-2 border-dashed border-slate-800 hover:border-purple-500/50 bg-slate-950/60 rounded-xl p-6 text-center cursor-pointer transition-colors"
+              className="border-2 border-dashed border-slate-800 hover:border-indigo-500/50 bg-slate-950 rounded-xl p-6 text-center cursor-pointer transition-colors"
             >
-              <Upload className="w-7 h-7 text-slate-500 mx-auto mb-2" />
+              <Upload className="w-8 h-8 text-slate-500 mx-auto mb-2" />
               {selectedFile ? (
                 <div>
-                  <div className="text-xs font-bold text-slate-200">{selectedFile.name}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
-                    {selectedFile.size.toLocaleString()} bytes
+                  <div className="text-xs font-semibold text-slate-200">{selectedFile.name}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5">
+                    {(selectedFile.size / 1024).toFixed(1)} KB
                   </div>
                 </div>
               ) : (
                 <div>
                   <div className="text-xs text-slate-300 font-medium">クリックしてファイルを選択</div>
-                  <div className="text-[11px] text-slate-500 mt-1">任意のファイル形式に対応</div>
+                  <div className="text-[11px] text-slate-500 mt-1">ハイブリッド暗号化（AES-256 + RSA）により大容量ファイルにも対応</div>
                 </div>
               )}
             </div>
+
+            {fileError && (
+              <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                <span>{fileError}</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              disabled={isProcessingFile || !selectedFile}
+              onClick={handleFileAction}
+              className="w-full py-2.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+            >
+              {action === 'encrypt' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+              <span>{isProcessingFile ? '処理中...' : action === 'encrypt' ? 'ファイルを暗号化' : 'ファイルを復号'}</span>
+            </button>
           </div>
 
-          {fileError && (
-            <div className="p-3.5 rounded-xl bg-red-950/40 border border-red-800/80 text-xs text-red-200 flex items-start gap-2.5">
-              <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div className="font-medium">{fileError}</div>
-            </div>
-          )}
-
-          <button
-            type="button"
-            disabled={isProcessingFile || !selectedFile}
-            onClick={handleFileAction}
-            className="w-full py-2.5 px-4 rounded-xl font-bold text-xs bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/30 transition-all flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            {action === 'encrypt' ? (
-              <>
-                <Lock className="w-4 h-4" />
-                <span>ファイルを暗号化</span>
-              </>
-            ) : (
-              <>
-                <Unlock className="w-4 h-4" />
-                <span>ファイルを復号</span>
-              </>
-            )}
-          </button>
-
           {fileSuccess && (
-            <div className="bg-purple-950/20 border border-purple-800/80 rounded-xl p-4 space-y-3">
-              <div className="flex items-center gap-2 text-purple-400 font-bold text-xs">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>{action === 'encrypt' ? 'ファイル暗号化完了' : 'ファイル復号完了'}</span>
-              </div>
-              <div className="flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-lg p-3">
+            <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-5 h-5 text-emerald-400" />
                 <div>
-                  <div className="text-xs font-mono font-bold text-slate-200">{fileSuccess.filename}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">{fileSuccess.size.toLocaleString()} bytes</div>
+                  <div className="text-xs font-semibold text-slate-100">{fileSuccess.filename}</div>
+                  <div className="text-[11px] text-slate-400 font-mono">
+                    {(fileSuccess.size / 1024).toFixed(1)} KB
+                  </div>
                 </div>
-                <a
-                  href={fileSuccess.downloadUrl}
-                  download={fileSuccess.filename}
-                  className="px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>ダウンロード</span>
-                </a>
               </div>
+              <a
+                href={fileSuccess.downloadUrl}
+                download={fileSuccess.filename}
+                className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-sm"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>ダウンロード</span>
+              </a>
             </div>
           )}
         </div>

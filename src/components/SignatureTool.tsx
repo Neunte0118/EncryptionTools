@@ -48,12 +48,14 @@ interface Props {
     key: KeyVaultItem;
   } | null;
   onClearSelectedKey?: () => void;
+  onNavigateToKeyGenerator?: () => void;
 }
 
 export const SignatureTool: React.FC<Props> = ({
   vault,
   selectedKey,
   onClearSelectedKey,
+  onNavigateToKeyGenerator,
 }) => {
   const [mode, setMode] = useState<'sign' | 'verify'>('sign');
   const [dataType, setDataType] = useState<'text' | 'file'>('text');
@@ -113,6 +115,8 @@ export const SignatureTool: React.FC<Props> = ({
     if (item.type === 'rsa-pss') setAlgType('rsa-pss');
     else if (item.type === 'rsa-pkcs1') setAlgType('rsa-pkcs1');
     else if (item.type === 'ecdsa') setAlgType('ecdsa');
+    else if (item.type === 'ed25519') setAlgType('ed25519');
+    else if (item.type === 'secp256k1') setAlgType('secp256k1');
 
     if (item.algorithmDetails.namedCurve) {
       setNamedCurve(item.algorithmDetails.namedCurve as any);
@@ -123,22 +127,6 @@ export const SignatureTool: React.FC<Props> = ({
 
     if (item.privateKeyPem) setPrivateKeyPem(item.privateKeyPem);
     if (item.publicKeyPem) setPublicKeyPem(item.publicKeyPem);
-  };
-
-  const handleGenerateEphemeralKey = () => {
-    try {
-      if (algType === 'ed25519') {
-        const kp = generateEd25519KeyPair();
-        setPrivateKeyPem(kp.privateKeyHex);
-        setPublicKeyPem(kp.publicKeyHex);
-      } else if (algType === 'secp256k1') {
-        const kp = generateSecp256k1KeyPair();
-        setPrivateKeyPem(kp.privateKeyHex);
-        setPublicKeyPem(kp.publicKeyHex);
-      }
-    } catch (e: any) {
-      setSignError(`鍵生成エラー: ${e.message}`);
-    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -272,7 +260,12 @@ export const SignatureTool: React.FC<Props> = ({
   };
 
   const signableVaultKeys = vault.keys.filter(
-    (k) => k.type === 'rsa-pss' || k.type === 'ecdsa' || k.type === 'rsa-pkcs1'
+    (k) =>
+      k.type === 'rsa-pss' ||
+      k.type === 'ecdsa' ||
+      k.type === 'rsa-pkcs1' ||
+      k.type === 'ed25519' ||
+      k.type === 'secp256k1'
   );
 
   return (
@@ -315,6 +308,23 @@ export const SignatureTool: React.FC<Props> = ({
             署名検証
           </button>
         </div>
+      </div>
+
+      {/* Strict Key Notice Banner */}
+      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
+        <span className="flex items-center gap-2">
+          <KeyRound className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
+        </span>
+        {onNavigateToKeyGenerator && (
+          <button
+            type="button"
+            onClick={onNavigateToKeyGenerator}
+            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
+          >
+            「暗号鍵生成」を開く
+          </button>
+        )}
       </div>
 
       {/* Algorithm & Key Settings */}
@@ -419,14 +429,14 @@ export const SignatureTool: React.FC<Props> = ({
                   秘密鍵 {algType === 'ed25519' || algType === 'secp256k1' ? '(Hex / Base64 / PEM)' : 'PEM'}
                 </span>
                 <div className="flex items-center gap-2">
-                  {(algType === 'ed25519' || algType === 'secp256k1') && (
+                  {onNavigateToKeyGenerator && (
                     <button
                       type="button"
-                      onClick={handleGenerateEphemeralKey}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                      onClick={onNavigateToKeyGenerator}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold"
                     >
-                      <RefreshCw className="w-3 h-3" />
-                      <span>即時生成</span>
+                      <KeyRound className="w-3.5 h-3.5" />
+                      <span>「暗号鍵生成」で鍵を生成</span>
                     </button>
                   )}
                   <FileLoaderButton

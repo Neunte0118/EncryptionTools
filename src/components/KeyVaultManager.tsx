@@ -34,12 +34,14 @@ interface Props {
   vault: KeyVaultFile;
   onVaultChange: (updated: KeyVaultFile) => void;
   onSelectKeyForAction?: (action: 'sign' | 'verify' | 'encrypt' | 'decrypt', key: KeyVaultItem) => void;
+  onNavigateToKeyGenerator?: () => void;
 }
 
 export const KeyVaultManager: React.FC<Props> = ({
   vault,
   onVaultChange,
   onSelectKeyForAction,
+  onNavigateToKeyGenerator,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
@@ -176,6 +178,17 @@ export const KeyVaultManager: React.FC<Props> = ({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Navigate to Key Generator */}
+          {onNavigateToKeyGenerator && (
+            <button
+              onClick={onNavigateToKeyGenerator}
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
+            >
+              <Key className="w-3.5 h-3.5 shrink-0" />
+              <span>「暗号鍵生成」で新しい鍵を作成</span>
+            </button>
+          )}
+
           {/* Load from File */}
           <input
             ref={fileInputRef}
@@ -195,7 +208,7 @@ export const KeyVaultManager: React.FC<Props> = ({
           {/* Download/Export File */}
           <button
             onClick={() => exportVaultToFile(vault)}
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-md transition-colors shadow-sm"
+            className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
           >
             <Download className="w-3.5 h-3.5 shrink-0" />
             <span>ファイル書出</span>
@@ -230,13 +243,36 @@ export const KeyVaultManager: React.FC<Props> = ({
           onChange={(e) => setFilterType(e.target.value)}
           className="bg-slate-900 border border-slate-800 rounded-md px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
         >
-          <option value="all">すべての暗号種別</option>
-          <option value="rsa-pss">RSA-PSS 署名</option>
-          <option value="rsa-oaep">RSA-OAEP 暗号化</option>
-          <option value="rsa-pkcs1">RSA-PKCS#1</option>
-          <option value="ecdsa">ECDSA 楕円曲線署名</option>
-          <option value="ecdh">ECDH 鍵共有</option>
-          <option value="aes-gcm">AES-GCM 共通鍵</option>
+          <option value="all">すべての暗号種別 ({vault.keys.length})</option>
+          <optgroup label="非対称暗号 (公開鍵 / 署名)">
+            <option value="rsa-oaep">RSA-OAEP 暗号化</option>
+            <option value="rsa-pss">RSA-PSS 署名</option>
+            <option value="rsa-pkcs1">RSA-PKCS#1 v1.5</option>
+            <option value="ecdsa">ECDSA 楕円曲線署名</option>
+            <option value="ecdh">ECDH 鍵共有</option>
+            <option value="ed25519">Ed25519 高速署名</option>
+            <option value="x25519">X25519 鍵交換</option>
+            <option value="secp256k1">secp256k1 (Bitcoin/Ethereum)</option>
+          </optgroup>
+          <optgroup label="共通鍵暗号">
+            <option value="aes-gcm">AES-GCM (認証付き暗号)</option>
+            <option value="aes-cbc">AES-CBC (標準ブロック暗号)</option>
+            <option value="aes-ctr">AES-CTR (カウンタモード)</option>
+            <option value="chacha20">ChaCha20-Poly1305</option>
+            <option value="hmac">HMAC 署名鍵</option>
+          </optgroup>
+          <optgroup label="耐量子暗号 (PQC)">
+            <option value="pqc-kem">ML-KEM (Kyber) 鍵カプセル化</option>
+            <option value="pqc-dsa">ML-DSA (Dilithium) 電子署名</option>
+          </optgroup>
+          <optgroup label="高度暗号・セキュリティ">
+            <option value="pgp">OpenPGP 鍵</option>
+            <option value="ring">環署名 (Ring Signature) 鍵</option>
+            <option value="fhe">Paillier 準同型暗号 (FHE) 鍵</option>
+            <option value="abe-master">CP-ABE 認証局マスター鍵</option>
+            <option value="abe-user">CP-ABE ユーザー属性秘密鍵</option>
+            <option value="passphrase">高エントロピーパスフレーズ</option>
+          </optgroup>
         </select>
       </div>
 

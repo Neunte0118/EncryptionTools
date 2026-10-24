@@ -38,12 +38,14 @@ interface Props {
     key: KeyVaultItem;
   } | null;
   onClearSelectedKey?: () => void;
+  onNavigateToKeyGenerator?: () => void;
 }
 
 export const AesTool: React.FC<Props> = ({
   vault,
   selectedKey,
   onClearSelectedKey,
+  onNavigateToKeyGenerator,
 }) => {
   const [action, setAction] = useState<'encrypt' | 'decrypt'>('encrypt');
   const [targetType, setTargetType] = useState<'text' | 'file'>('text');
@@ -82,11 +84,13 @@ export const AesTool: React.FC<Props> = ({
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  const aesVaultKeys = vault.keys.filter((k) => k.type === 'aes-gcm');
+  const aesVaultKeys = vault.keys.filter(
+    (k) => k.type === 'aes-gcm' || k.type === 'aes-cbc' || k.type === 'aes-ctr'
+  );
 
   // Sync selected key from vault
   useEffect(() => {
-    if (selectedKey && selectedKey.key.type === 'aes-gcm') {
+    if (selectedKey && (selectedKey.key.type === 'aes-gcm' || selectedKey.key.type === 'aes-cbc' || selectedKey.key.type === 'aes-ctr')) {
       setAction(selectedKey.action);
       setKeyInputType('vault');
       setSelectedVaultKeyId(selectedKey.key.id);
@@ -117,7 +121,7 @@ export const AesTool: React.FC<Props> = ({
       const hash = await crypto.subtle.digest('SHA-256', passBuf);
       return new Uint8Array(hash.slice(0, requiredBytes));
     } else if (type === 'raw') {
-      if (!rawB64.trim()) throw new Error('Base64 共通鍵を入力してください');
+      if (!rawB64.trim()) throw new Error('Base64 共通鍵を入力してください（「暗号鍵生成」ツールで生成できます）');
       const buf = new Uint8Array(base64ToBuffer(rawB64.trim()));
       if (buf.length !== requiredBytes) {
         // If provided key length doesn't match selected, slice or pad appropriately
@@ -127,17 +131,10 @@ export const AesTool: React.FC<Props> = ({
       return buf;
     } else {
       const vk = aesVaultKeys.find((k) => k.id === vaultKeyId);
-      if (!vk || !vk.rawKeyBase64) throw new Error('保管庫から有効なAESキーを選択してください');
+      if (!vk || !vk.rawKeyBase64) throw new Error('保管庫から有効なAESキーを選択してください（「暗号鍵生成」ツールで登録可能）');
       const buf = new Uint8Array(base64ToBuffer(vk.rawKeyBase64));
       return buf.slice(0, requiredBytes);
     }
-  };
-
-  const handleGenerateRawKey = () => {
-    const raw = new Uint8Array(aesKeyLength / 8);
-    crypto.getRandomValues(raw);
-    const b64 = bufferToBase64(raw.buffer);
-    setRawKeyBase64(b64);
   };
 
   // Text Encrypt
@@ -410,10 +407,7 @@ export const AesTool: React.FC<Props> = ({
           <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
             <button
               type="button"
-              onClick={() => {
-                setAesKeyLength(256);
-                if (keyInputType === 'raw') handleGenerateRawKey();
-              }}
+              onClick={() => setAesKeyLength(256)}
               className={`py-1.5 px-2 rounded text-center transition-colors ${
                 aesKeyLength === 256
                   ? 'bg-indigo-600 text-white font-bold'
@@ -424,10 +418,7 @@ export const AesTool: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setAesKeyLength(192);
-                if (keyInputType === 'raw') handleGenerateRawKey();
-              }}
+              onClick={() => setAesKeyLength(192)}
               className={`py-1.5 px-2 rounded text-center transition-colors ${
                 aesKeyLength === 192
                   ? 'bg-indigo-600 text-white font-bold'
@@ -438,10 +429,7 @@ export const AesTool: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => {
-                setAesKeyLength(128);
-                if (keyInputType === 'raw') handleGenerateRawKey();
-              }}
+              onClick={() => setAesKeyLength(128)}
               className={`py-1.5 px-2 rounded text-center transition-colors ${
                 aesKeyLength === 128
                   ? 'bg-indigo-600 text-white font-bold'
@@ -530,13 +518,17 @@ export const AesTool: React.FC<Props> = ({
               onFileLoaded={(content) => setRawKeyBase64(content)}
               title="32バイト共通鍵バイナリまたはBase64ファイルを指定"
             />
-            <button
-              type="button"
-              onClick={handleGenerateRawKey}
-              className="px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-medium border border-slate-700 shrink-0"
-            >
-              新規生成
-            </button>
+            {onNavigateToKeyGenerator && (
+              <button
+                type="button"
+                onClick={onNavigateToKeyGenerator}
+                title="鍵生成はすべて「暗号鍵生成」で行います"
+                className="px-3.5 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold border border-indigo-500/40 flex items-center gap-1.5 shrink-0 transition-colors"
+              >
+                <Key className="w-3.5 h-3.5" />
+                <span>「暗号鍵生成」で鍵を生成</span>
+              </button>
+            )}
           </div>
         )}
 

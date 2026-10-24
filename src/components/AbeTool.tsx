@@ -1,7 +1,5 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
-  generateMasterAuthority,
-  issueUserKey,
   encryptWithPolicy,
   decryptWithUserKey,
   evaluatePolicyTree,
@@ -10,6 +8,7 @@ import {
   AbeCipherPackage,
   AbeDecryptedResult,
 } from '../utils/abeUtils';
+import { KeyVaultFile } from '../types/crypto';
 import {
   ShieldCheck,
   Lock,
@@ -24,22 +23,80 @@ import {
   FileText,
   FileCode,
   Tag,
-  RotateCcw,
   ShieldAlert,
 } from 'lucide-react';
 
-export const AbeTool: React.FC = () => {
+interface Props {
+  vault?: KeyVaultFile;
+  onNavigateToKeyGenerator?: () => void;
+}
+
+// Fallback constant demo authority
+const FALLBACK_ABE_AUTHORITY: MasterAuthority = {
+  publicParamsId: 'auth-default-sec',
+  masterSecretKeyHex: 'a4f89d34e2c8172901fa38b4d0921e42f9b17c802e3a15dc82194e47bc9102ef',
+  createdAt: Date.now(),
+};
+
+export const AbeTool: React.FC<Props> = ({ vault, onNavigateToKeyGenerator }) => {
   const [activeTab, setActiveTab] = useState<'encrypt' | 'decrypt' | 'keys' | 'authority'>('encrypt');
 
+  const vaultMasterKeys = (vault?.keys || []).filter((k) => k.type === 'abe-master');
+  const vaultUserKeys = (vault?.keys || []).filter((k) => k.type === 'abe-user');
+
   // Authority & Master Key
-  const [authority, setAuthority] = useState<MasterAuthority>(() => generateMasterAuthority());
+  const [authority, setAuthority] = useState<MasterAuthority>(() => {
+    if (vaultMasterKeys.length > 0) {
+      try {
+        const item = vaultMasterKeys[0];
+        if (item.extraData?.authority) return item.extraData.authority;
+        if (item.privateKeyPem) return JSON.parse(item.privateKeyPem);
+      } catch (e) {
+        // fallback
+      }
+    }
+    return FALLBACK_ABE_AUTHORITY;
+  });
 
   // User Keys List
-  const [userKeys, setUserKeys] = useState<UserSecretKey[]>([]);
+  const [userKeys, setUserKeys] = useState<UserSecretKey[]>(() => {
+    const list: UserSecretKey[] = [];
+    for (const item of vaultUserKeys) {
+      try {
+        if (item.extraData?.userKey) {
+          list.push(item.extraData.userKey);
+        } else if (item.privateKeyPem) {
+          list.push(JSON.parse(item.privateKeyPem));
+        }
+      } catch (e) {
+        // skip
+      }
+    }
+    return list;
+  });
 
-  // Key Generation State
-  const [newUserId, setNewUserId] = useState('');
-  const [newUserAttributes, setNewUserAttributes] = useState('');
+  useEffect(() => {
+    // Sync vault user keys
+    const list: UserSecretKey[] = [];
+    for (const item of vaultUserKeys) {
+      try {
+        if (item.extraData?.userKey) {
+          list.push(item.extraData.userKey);
+        } else if (item.privateKeyPem) {
+          list.push(JSON.parse(item.privateKeyPem));
+        }
+      } catch (e) {
+        // skip
+      }
+    }
+    if (list.length > 0) {
+      setUserKeys((prev) => {
+        const existingIds = new Set(prev.map((k) => `${k.userId}-${k.userBlindingHex}`));
+        const filtered = list.filter((k) => !existingIds.has(`${k.userId}-${k.userBlindingHex}`));
+        return [...filtered, ...prev];
+      });
+    }
+  }, [vault]);
 
   // Encryption State
   const [inputDataType, setInputDataType] = useState<'text' | 'file'>('text');
@@ -233,18 +290,6 @@ export const AbeTool: React.FC = () => {
   // -------------------------------------------------------------
   // Key Management Handlers
   // -------------------------------------------------------------
-  const handleIssueUserKey = () => {
-    if (!newUserId.trim() || !newUserAttributes.trim()) return;
-    const attrs = newUserAttributes
-      .split(',')
-      .map((a) => a.trim())
-      .filter(Boolean);
-    const uKey = issueUserKey(authority, newUserId.trim(), attrs);
-    setUserKeys((prev) => [uKey, ...prev]);
-    setNewUserId('');
-    setNewUserAttributes('');
-  };
-
   const handleDownloadUserKeyFile = (key: UserSecretKey) => {
     const blob = new Blob([JSON.stringify(key, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -262,11 +307,6 @@ export const AbeTool: React.FC = () => {
   // -------------------------------------------------------------
   // Authority Handlers
   // -------------------------------------------------------------
-  const handleRegenerateAuthority = () => {
-    const fresh = generateMasterAuthority();
-    setAuthority(fresh);
-    setAuthorityStatus('新しい認証局マスター鍵を生成しました');
-  };
 
   const handleExportMasterAuthority = () => {
     const blob = new Blob([JSON.stringify(authority, null, 2)], { type: 'application/json' });
@@ -302,16 +342,34 @@ export const AbeTool: React.FC = () => {
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto text-xs">
+      {/* Strict Central Key Generation Notice Banner */}
+      <div className="p-3 bg-indigo-950/40 border border-indigo-700/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+        <div className="flex items-center gap-2 text-indigo-300 font-medium">
+          <ShieldAlert className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span>※ 鍵の生成・発行はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
+        </div>
+        {onNavigateToKeyGenerator && (
+          <button
+            type="button"
+            onClick={onNavigateToKeyGenerator}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shrink-0 text-xs shadow-sm transition-colors flex items-center justify-center gap-1.5"
+          >
+            <KeyRound className="w-3.5 h-3.5" />
+            <span>「暗号鍵生成」で属性鍵・マスター鍵を作成</span>
+          </button>
+        )}
+      </div>
+
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-800">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-600/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 rounded-xl bg-indigo-600/20 text-indigo-400 border border-indigo-500/30 flex items-center justify-center shrink-0">
             <Tag className="w-5 h-5" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-100">属性ベース暗号スタジオ</h2>
-              <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-950/80 text-amber-300 border border-amber-800/60 font-mono font-medium">
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/80 text-indigo-300 border border-indigo-800/60 font-mono font-medium">
                 CP-ABE 暗号化ファイル対応
               </span>
             </div>
@@ -325,7 +383,7 @@ export const AbeTool: React.FC = () => {
             onClick={() => setActiveTab('encrypt')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'encrypt'
-                ? 'bg-amber-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -337,7 +395,7 @@ export const AbeTool: React.FC = () => {
             onClick={() => setActiveTab('decrypt')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'decrypt'
-                ? 'bg-amber-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -349,19 +407,19 @@ export const AbeTool: React.FC = () => {
             onClick={() => setActiveTab('keys')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'keys'
-                ? 'bg-amber-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
             <Users className="w-3.5 h-3.5" />
-            <span>属性秘密鍵発行・管理</span>
+            <span>属性秘密鍵管理</span>
           </button>
           <button
             type="button"
             onClick={() => setActiveTab('authority')}
             className={`px-3 py-1.5 rounded-lg transition-colors flex items-center gap-1.5 ${
               activeTab === 'authority'
-                ? 'bg-amber-600 text-white shadow-sm'
+                ? 'bg-indigo-600 text-white shadow-sm'
                 : 'text-slate-400 hover:text-slate-200'
             }`}
           >
@@ -376,7 +434,7 @@ export const AbeTool: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           <div className="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <h3 className="font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center gap-2">
-              <Lock className="w-4 h-4 text-amber-400" />
+              <Lock className="w-4 h-4 text-indigo-400" />
               <span>アクセスポリシーと保護対象データ</span>
             </h3>
 
@@ -391,7 +449,7 @@ export const AbeTool: React.FC = () => {
                 value={policyExpr}
                 onChange={(e) => setPolicyExpr(e.target.value)}
                 placeholder="例: role:doctor AND dept:surgery"
-                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-amber-300 font-mono text-xs focus:outline-none focus:border-amber-500"
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-indigo-300 font-mono text-xs focus:outline-none focus:border-indigo-500"
               />
             </div>
 
@@ -403,7 +461,7 @@ export const AbeTool: React.FC = () => {
                   onClick={() => setInputDataType('text')}
                   className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                     inputDataType === 'text'
-                      ? 'bg-amber-600 text-white'
+                      ? 'bg-indigo-600 text-white'
                       : 'bg-slate-950 text-slate-400 border border-slate-800'
                   }`}
                 >
@@ -414,7 +472,7 @@ export const AbeTool: React.FC = () => {
                   onClick={() => setInputDataType('file')}
                   className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
                     inputDataType === 'file'
-                      ? 'bg-amber-600 text-white'
+                      ? 'bg-indigo-600 text-white'
                       : 'bg-slate-950 text-slate-400 border border-slate-800'
                   }`}
                 >
@@ -429,7 +487,7 @@ export const AbeTool: React.FC = () => {
                     onChange={(e) => setSecretMessage(e.target.value)}
                     rows={4}
                     placeholder="暗号化する機密テキストを入力..."
-                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-sans focus:outline-none focus:border-amber-500 leading-relaxed"
+                    className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-sans focus:outline-none focus:border-indigo-500 leading-relaxed"
                   />
                 </div>
               ) : (
@@ -443,7 +501,7 @@ export const AbeTool: React.FC = () => {
                   <button
                     type="button"
                     onClick={() => encryptFileInputRef.current?.click()}
-                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 text-xs font-semibold inline-flex items-center gap-2"
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 text-xs font-semibold inline-flex items-center gap-2"
                   >
                     <Upload className="w-4 h-4" />
                     <span>保護するファイルを選択</span>
@@ -471,7 +529,7 @@ export const AbeTool: React.FC = () => {
               type="button"
               onClick={handleRunEncryption}
               disabled={isEncrypting}
-              className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-sm text-xs"
+              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold flex items-center justify-center gap-2 shadow-sm text-xs"
             >
               <Lock className="w-4 h-4" />
               <span>ポリシーで暗号化を実行</span>
@@ -481,7 +539,7 @@ export const AbeTool: React.FC = () => {
           <div className="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4 flex flex-col justify-between">
             <div className="space-y-3">
               <h3 className="font-bold text-slate-200 border-b border-slate-800 pb-2 flex items-center gap-2">
-                <Download className="w-4 h-4 text-amber-400" />
+                <Download className="w-4 h-4 text-indigo-400" />
                 <span>暗号化ファイルの出力</span>
               </h3>
               <p className="text-slate-400 text-[11px] leading-relaxed">
@@ -502,7 +560,7 @@ export const AbeTool: React.FC = () => {
                       元ファイル名: {generatedCipherPackage.fileName}
                     </div>
                   )}
-                  <div className="font-mono text-[10px] text-amber-300/80 truncate">
+                  <div className="font-mono text-[10px] text-indigo-300/80 truncate">
                     暗号文ペイロード: {generatedCipherPackage.ciphertextBase64.slice(0, 36)}...
                   </div>
                 </div>
@@ -518,7 +576,7 @@ export const AbeTool: React.FC = () => {
               type="button"
               onClick={handleDownloadCipherPackage}
               disabled={!generatedCipherPackage}
-              className="w-full py-2.5 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
+              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-sm"
             >
               <Download className="w-4 h-4" />
               <span>暗号化ファイル保存 (.abe.json)</span>
@@ -533,7 +591,7 @@ export const AbeTool: React.FC = () => {
           <div className="lg:col-span-6 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="font-bold text-slate-200 flex items-center gap-2">
-                <Upload className="w-4 h-4 text-amber-400" />
+                <Upload className="w-4 h-4 text-indigo-400" />
                 <span>暗号化ファイルの読み込み</span>
               </h3>
               <input
@@ -546,7 +604,7 @@ export const AbeTool: React.FC = () => {
               <button
                 type="button"
                 onClick={() => decryptCipherFileInputRef.current?.click()}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold flex items-center gap-1"
+                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold flex items-center gap-1"
               >
                 <Upload className="w-3 h-3" />
                 <span>暗号化ファイル選択</span>
@@ -557,7 +615,7 @@ export const AbeTool: React.FC = () => {
               <div className="p-3 bg-slate-950 border border-slate-800 rounded-lg space-y-1 font-mono text-[11px]">
                 <div className="flex justify-between text-slate-400">
                   <span>埋め込みポリシー:</span>
-                  <span className="text-amber-300 font-bold">{cipherPackageToDecrypt.policyExpression}</span>
+                  <span className="text-indigo-300 font-bold">{cipherPackageToDecrypt.policyExpression}</span>
                 </div>
                 {cipherPackageToDecrypt.fileName && (
                   <div className="flex justify-between text-slate-400">
@@ -591,7 +649,7 @@ export const AbeTool: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => userKeyFileInputRef.current?.click()}
-                  className="text-amber-400 hover:text-amber-300 text-[11px] font-medium"
+                  className="text-indigo-400 hover:text-indigo-300 text-[11px] font-medium"
                 >
                   秘密鍵ファイル読込
                 </button>
@@ -601,7 +659,7 @@ export const AbeTool: React.FC = () => {
                 <div className="p-4 bg-slate-950 border border-slate-800 rounded-lg text-center space-y-1">
                   <div className="text-slate-400">登録された属性秘密鍵がありません</div>
                   <p className="text-[11px] text-slate-500">
-                    「秘密鍵ファイル読込」を押すか、「属性秘密鍵発行・管理」タブから発行してください。
+                    「秘密鍵ファイル読込」を押すか、「暗号鍵生成」ツールで属性鍵を作成してください。
                   </p>
                 </div>
               ) : (
@@ -619,7 +677,7 @@ export const AbeTool: React.FC = () => {
                         onClick={() => setActiveUserKeyForDecrypt(key)}
                         className={`p-2.5 rounded-lg border cursor-pointer transition-colors flex items-center justify-between gap-2 ${
                           isSelected
-                            ? 'bg-amber-950/30 border-amber-500 text-amber-200'
+                            ? 'bg-indigo-950/40 border-indigo-500 text-indigo-200'
                             : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
@@ -725,79 +783,68 @@ export const AbeTool: React.FC = () => {
       {/* Tab 3: Key Management */}
       {activeTab === 'keys' && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-6">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="font-bold text-slate-200 text-sm flex items-center gap-2">
-                <Users className="w-4 h-4 text-amber-400" />
-                <span>ユーザー属性秘密鍵の発行・個別配布</span>
+                <Users className="w-4 h-4 text-indigo-400" />
+                <span>ユーザー属性秘密鍵の管理・保管</span>
               </h3>
               <p className="text-slate-400 text-[11px] mt-0.5">
-                組織のメンバーや受領者に対して、属性セットを付与した秘密鍵ファイルを発行・エクスポートします。
+                属性秘密鍵の発行・生成はすべて「暗号鍵生成」で行います。発行された鍵はここに一覧表示され、復号に使用できます。
               </p>
             </div>
-            <span className="font-mono text-[11px] text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">
-              認証局ID: {authority.publicParamsId}
-            </span>
-          </div>
-
-          {/* Issue new key form */}
-          <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
-            <h4 className="font-semibold text-slate-200 text-xs flex items-center gap-1.5">
-              <Plus className="w-4 h-4 text-amber-400" />
-              <span>新しいユーザー属性秘密鍵を発行</span>
-            </h4>
-
-            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <input
-                type="text"
-                value={newUserId}
-                onChange={(e) => setNewUserId(e.target.value)}
-                placeholder="ユーザー識別子 例: 医師A または 田中太郎"
-                className="sm:col-span-4 px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-amber-500"
-              />
-              <input
-                type="text"
-                value={newUserAttributes}
-                onChange={(e) => setNewUserAttributes(e.target.value)}
-                placeholder="カンマ区切りの属性 例: role:doctor, dept:cardiology, level:senior"
-                className="sm:col-span-6 px-3 py-2 bg-slate-900 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-amber-500"
-              />
+            {onNavigateToKeyGenerator && (
               <button
                 type="button"
-                onClick={handleIssueUserKey}
-                disabled={!newUserId.trim() || !newUserAttributes.trim()}
-                className="sm:col-span-2 px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white font-medium flex items-center justify-center gap-1 text-xs shadow-sm"
+                onClick={onNavigateToKeyGenerator}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 text-xs shadow-sm self-start sm:self-auto"
               >
-                <span>発行</span>
+                <Plus className="w-3.5 h-3.5" />
+                <span>「暗号鍵生成」で属性鍵を発行</span>
               </button>
-            </div>
+            )}
           </div>
 
           {/* Keys list */}
           <div className="space-y-3">
             <div className="flex justify-between items-center text-xs">
-              <span className="font-bold text-slate-300">発行済み・保管中の属性秘密鍵一覧</span>
+              <span className="font-bold text-slate-300">利用可能な属性秘密鍵一覧</span>
               <span className="text-slate-500 font-mono">{userKeys.length} 件</span>
             </div>
 
             {userKeys.length === 0 ? (
-              <div className="p-8 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-center space-y-1">
-                <div className="text-slate-400 font-medium">発行されたユーザー属性鍵がありません</div>
-                <p className="text-[11px] text-slate-500">
-                  上のフォームから属性鍵を発行するか、外部の鍵ファイルをインポートしてください。
+              <div className="p-8 bg-slate-950 border border-dashed border-slate-800 rounded-xl text-center space-y-3">
+                <div className="text-slate-400 font-medium">利用可能なユーザー属性秘密鍵がありません</div>
+                <p className="text-[11px] text-slate-500 max-w-md mx-auto">
+                  「暗号鍵生成」ツールで属性秘密鍵を発行して保管庫に保存するか、外部から .abekey.json ファイルを読み込んでください。
                 </p>
+                {onNavigateToKeyGenerator && (
+                  <button
+                    type="button"
+                    onClick={onNavigateToKeyGenerator}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs inline-flex items-center gap-1.5 shadow-sm"
+                  >
+                    <KeyRound className="w-3.5 h-3.5" />
+                    <span>「暗号鍵生成」へ移動</span>
+                  </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {userKeys.map((key, idx) => (
                   <div key={idx} className="p-3.5 bg-slate-950 border border-slate-800 rounded-xl space-y-2.5">
                     <div className="flex justify-between items-start">
-                      <div className="font-bold text-slate-200 text-xs">{key.userId}</div>
+                      <div className="font-bold text-slate-200 text-xs flex items-center gap-2">
+                        <span>{key.userId}</span>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950/60 border border-indigo-800/40 text-indigo-300 font-mono">
+                          {key.authorityId}
+                        </span>
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleDeleteUserKey(idx)}
                         className="text-slate-500 hover:text-rose-400"
-                        title="削除"
+                        title="リストから除外"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -809,7 +856,7 @@ export const AbeTool: React.FC = () => {
                         {key.attributes.map((a, aIdx) => (
                           <span
                             key={aIdx}
-                            className="text-[10px] px-2 py-0.5 rounded bg-amber-950/40 border border-amber-800/40 text-amber-300 font-mono"
+                            className="text-[10px] px-2 py-0.5 rounded bg-indigo-950/40 border border-indigo-800/40 text-indigo-300 font-mono"
                           >
                             {a}
                           </span>
@@ -821,7 +868,7 @@ export const AbeTool: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleDownloadUserKeyFile(key)}
-                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-amber-300 text-[11px] font-semibold flex items-center gap-1"
+                        className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 text-[11px] font-semibold flex items-center gap-1"
                       >
                         <Download className="w-3 h-3" />
                         <span>秘密鍵ファイル保存 (.abekey.json)</span>
@@ -838,28 +885,70 @@ export const AbeTool: React.FC = () => {
       {/* Tab 4: Authority */}
       {activeTab === 'authority' && (
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-800 pb-3">
             <div>
               <h3 className="font-bold text-slate-200 flex items-center gap-2">
-                <KeyRound className="w-4 h-4 text-amber-400" />
+                <KeyRound className="w-4 h-4 text-indigo-400" />
                 <span>認証局マスター鍵管理</span>
               </h3>
               <p className="text-slate-400 text-[11px] mt-0.5">
-                組織全体の暗号化と属性秘密鍵発行のルートとなるマスター認証局を管理します。
+                暗号化と属性秘密鍵発行のルートとなるマスター認証局を管理します。鍵の新規作成はすべて「暗号鍵生成」で行います。
               </p>
             </div>
-            <button
-              type="button"
-              onClick={handleRegenerateAuthority}
-              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-medium flex items-center gap-1.5 text-xs border border-slate-700"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>マスター鍵再生成</span>
-            </button>
+            {onNavigateToKeyGenerator && (
+              <button
+                type="button"
+                onClick={onNavigateToKeyGenerator}
+                className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium flex items-center gap-1.5 text-xs border border-indigo-500 shadow-sm self-start sm:self-auto"
+              >
+                <KeyRound className="w-3.5 h-3.5" />
+                <span>「暗号鍵生成」でマスター鍵を作成</span>
+              </button>
+            )}
           </div>
 
+          {/* Vault Master Authorities selection */}
+          {vaultMasterKeys.length > 0 && (
+            <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-300 font-semibold text-xs">保管庫のマスター認証局:</span>
+                <select
+                  value={authority.publicParamsId}
+                  onChange={(e) => {
+                    const found = vaultMasterKeys.find((k) => {
+                      const id = k.extraData?.authority?.publicParamsId || k.algorithmDetails?.publicParamsId;
+                      return id === e.target.value;
+                    });
+                    if (found) {
+                      try {
+                        const auth = found.extraData?.authority || JSON.parse(found.privateKeyPem || '{}');
+                        setAuthority(auth);
+                        setAuthorityStatus(`マスター認証局「${found.title}」を読み込みました`);
+                      } catch (err: any) {
+                        setAuthorityStatus('マスター認証局の読み込みに失敗しました');
+                      }
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-slate-900 border border-slate-800 rounded-lg text-indigo-300 text-xs focus:outline-none focus:border-indigo-500 font-medium"
+                >
+                  {vaultMasterKeys.map((k) => {
+                    const id = k.extraData?.authority?.publicParamsId || k.algorithmDetails?.publicParamsId || k.id;
+                    return (
+                      <option key={k.id} value={id}>
+                        {k.title} (ID: {id})
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+              <span className="text-[11px] text-slate-400 font-mono">
+                保管庫登録マスター鍵: {vaultMasterKeys.length} 件
+              </span>
+            </div>
+          )}
+
           {authorityStatus && (
-            <div className="p-2.5 bg-amber-950/40 border border-amber-800 rounded-lg text-amber-300 font-medium">
+            <div className="p-2.5 bg-indigo-950/40 border border-indigo-800 rounded-lg text-indigo-300 font-medium">
               {authorityStatus}
             </div>
           )}
@@ -867,7 +956,7 @@ export const AbeTool: React.FC = () => {
           <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl space-y-3">
             <div className="flex justify-between items-center text-xs">
               <span className="font-bold text-slate-200">現在のマスター認証局情報</span>
-              <span className="font-mono text-amber-400">{authority.publicParamsId}</span>
+              <span className="font-mono text-indigo-400">{authority.publicParamsId}</span>
             </div>
             <div className="p-2.5 bg-slate-900 rounded border border-slate-800 font-mono text-[10px] text-slate-400 break-all select-all">
               マスター秘密鍵: {authority.masterSecretKeyHex}
@@ -877,7 +966,7 @@ export const AbeTool: React.FC = () => {
               <button
                 type="button"
                 onClick={handleExportMasterAuthority}
-                className="flex-1 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white font-medium text-xs flex items-center justify-center gap-1 shadow-sm"
+                className="flex-1 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs flex items-center justify-center gap-1 shadow-sm"
               >
                 <Download className="w-3.5 h-3.5" />
                 <span>マスター鍵ファイル保存 (.abemaster.json)</span>

@@ -8,6 +8,11 @@ import {
   chacha20DecryptFile,
   ChaChaVariant,
 } from '../utils/chachaUtils';
+import {
+  getChaChaLinuxCommand,
+  getChaChaPowerShellScript,
+} from '../utils/opensslInterop';
+import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
 import { FileLoaderButton } from './FileLoaderButton';
 import { KeyVaultFile } from '../types/crypto';
 import { base64ToBuffer, hexToBuffer } from '../utils/cryptoUtils';
@@ -307,22 +312,6 @@ export const ChaCha20Tool: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Strict Key Notice Banner */}
-      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
-        <span className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
-        </span>
-        {onNavigateToKeyGenerator && (
-          <button
-            type="button"
-            onClick={onNavigateToKeyGenerator}
-            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
-          >
-            「暗号鍵生成」を開く
-          </button>
-        )}
-      </div>
 
       {/* Algorithm Variant Selection */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
@@ -682,6 +671,21 @@ export const ChaCha20Tool: React.FC<Props> = ({
           )}
         </div>
       )}
+
+      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
+      <CrossPlatformCliPanel
+        title="Linux (OpenSSL) & Windows PowerShell ChaCha20 互換コマンド"
+        defaultOpen={false}
+        linuxCommand={getChaChaLinuxCommand({
+          action,
+          variant,
+          filename: selectedFile?.name,
+          isBase64: targetType === 'text',
+        })}
+        powerShellScript={getChaChaPowerShellScript({ action, variant }).nativePowerShell}
+        powerShellCli={getChaChaPowerShellScript({ action, variant }).openSslCli}
+        note="Linux (OpenSSL 1.1.1+ / 3.x) および Windows PowerShell (.NET Core 6+ / PS 7+) で ChaCha20-Poly1305 を直接復号・暗号化可能です。"
+      />
     </div>
   );
 };

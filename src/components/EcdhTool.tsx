@@ -223,22 +223,6 @@ export const EcdhTool: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Strict Key Notice Banner */}
-      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
-        <span className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
-        </span>
-        {onNavigateToKeyGenerator && (
-          <button
-            type="button"
-            onClick={onNavigateToKeyGenerator}
-            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
-          >
-            「暗号鍵生成」を開く
-          </button>
-        )}
-      </div>
 
       {/* Inputs Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

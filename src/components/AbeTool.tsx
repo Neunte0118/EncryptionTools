@@ -342,23 +342,6 @@ export const AbeTool: React.FC<Props> = ({ vault, onNavigateToKeyGenerator }) =>
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto text-xs">
-      {/* Strict Central Key Generation Notice Banner */}
-      <div className="p-3 bg-indigo-950/40 border border-indigo-700/60 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-        <div className="flex items-center gap-2 text-indigo-300 font-medium">
-          <ShieldAlert className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>※ 鍵の生成・発行はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
-        </div>
-        {onNavigateToKeyGenerator && (
-          <button
-            type="button"
-            onClick={onNavigateToKeyGenerator}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold shrink-0 text-xs shadow-sm transition-colors flex items-center justify-center gap-1.5"
-          >
-            <KeyRound className="w-3.5 h-3.5" />
-            <span>「暗号鍵生成」で属性鍵・マスター鍵を作成</span>
-          </button>
-        )}
-      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-4 border-b border-slate-800">

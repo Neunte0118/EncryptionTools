@@ -9,8 +9,14 @@ import {
   encryptFileHybrid,
   decryptFileHybrid,
   HashAlgorithm,
+  isEncryptedFile,
 } from '../utils/cryptoUtils';
+import {
+  getRsaLinuxCommand,
+  getRsaPowerShellScript,
+} from '../utils/opensslInterop';
 import { FileLoaderButton } from './FileLoaderButton';
+import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -26,6 +32,7 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  Terminal,
 } from 'lucide-react';
 
 interface Props {
@@ -49,6 +56,7 @@ export const RsaTool: React.FC<Props> = ({
 
   // Key state
   const [hashAlgo, setHashAlgo] = useState<HashAlgorithm>('SHA-256');
+  const [fileEncFormat, setFileEncFormat] = useState<'raw-binary' | 'hybrid'>('raw-binary');
   const [selectedVaultKeyId, setSelectedVaultKeyId] = useState('');
   const [publicKeyPem, setPublicKeyPem] = useState('');
   const [privateKeyPem, setPrivateKeyPem] = useState('');
@@ -187,13 +195,30 @@ export const RsaTool: React.FC<Props> = ({
         if (!publicKeyPem.trim()) {
           throw new Error('暗号化に使用するRSA公開鍵 PEM を指定してください');
         }
-        const outBuffer = await encryptFileHybrid(
-          selectedFile.buffer,
-          selectedFile.name,
-          publicKeyPem.trim(),
-          hashAlgo
-        );
-        const outFilename = `${selectedFile.name}.rsa`;
+
+        let outBuffer: ArrayBuffer;
+        let outFilename: string;
+
+        // If raw binary OpenSSL pkeyutl compatible format is selected and file fits in RSA-OAEP limit
+        if (fileEncFormat === 'raw-binary') {
+          // Check file size limit for RSA-OAEP (typically key_size/8 - 2*hash_len - 2)
+          if (selectedFile.buffer.byteLength > 446) {
+            throw new Error(`直接RSA暗号化できるファイルサイズは鍵長に応じた制限があります (446バイト以下)。大きなファイルは「ハイブリッド形式」を選択してください。`);
+          }
+          const encRes = await rsaEncrypt(publicKeyPem.trim(), hashAlgo, selectedFile.buffer);
+          const rawBytes = base64ToBuffer(encRes.base64);
+          outBuffer = rawBytes;
+          outFilename = `${selectedFile.name}.bin`;
+        } else {
+          outBuffer = await encryptFileHybrid(
+            selectedFile.buffer,
+            selectedFile.name,
+            publicKeyPem.trim(),
+            hashAlgo
+          );
+          outFilename = `${selectedFile.name}.rsa`;
+        }
+
         const blob = new Blob([outBuffer], { type: 'application/octet-stream' });
         const downloadUrl = URL.createObjectURL(blob);
         setFileSuccess({
@@ -205,11 +230,34 @@ export const RsaTool: React.FC<Props> = ({
         if (!privateKeyPem.trim()) {
           throw new Error('復号に使用するRSA秘密鍵 PEM を指定してください');
         }
-        const decrypted = await decryptFileHybrid(
-          selectedFile.buffer,
-          privateKeyPem.trim(),
-          hashAlgo
-        );
+
+        let decrypted: { filename: string; fileData: ArrayBuffer };
+
+        // Auto-detect OpenSSL / Linux pkeyutl output raw binary (e.g. 256, 384, 512 bytes)
+        const sz = selectedFile.buffer.byteLength;
+        const isRawRsaBlock = (sz === 256 || sz === 384 || sz === 512) && !isEncryptedFile(selectedFile.buffer);
+
+        if (isRawRsaBlock || (!isEncryptedFile(selectedFile.buffer) && !selectedFile.name.endsWith('.rsa'))) {
+          // Direct RSA-OAEP decrypt
+          const decBuf = await rsaDecrypt(privateKeyPem.trim(), hashAlgo, selectedFile.buffer);
+          const baseName = selectedFile.name.endsWith('.bin')
+            ? selectedFile.name.slice(0, -4)
+            : selectedFile.name.endsWith('.enc')
+            ? selectedFile.name.slice(0, -4)
+            : `decrypted_${selectedFile.name}`;
+          decrypted = {
+            filename: baseName,
+            fileData: decBuf,
+          };
+        } else {
+          // Hybrid file decrypt
+          decrypted = await decryptFileHybrid(
+            selectedFile.buffer,
+            privateKeyPem.trim(),
+            hashAlgo
+          );
+        }
+
         const blob = new Blob([decrypted.fileData], { type: 'application/octet-stream' });
         const downloadUrl = URL.createObjectURL(blob);
         setFileSuccess({
@@ -224,6 +272,11 @@ export const RsaTool: React.FC<Props> = ({
       setIsProcessingFile(false);
     }
   };
+
+  const psScriptObj = getRsaPowerShellScript({
+    action,
+    hashAlgo,
+  });
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -241,7 +294,7 @@ export const RsaTool: React.FC<Props> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              NIST SP 800-56B 準拠 最適非対称暗号化パディング (OAEP) による公開鍵暗号化・ハイブリッドファイル暗号
+              Linux (OpenSSL `pkeyutl`) および Windows PowerShell (.NET `RSA.Create()`) との完全互換対応
             </p>
           </div>
         </div>
@@ -322,46 +375,29 @@ export const RsaTool: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Strict Key Notice Banner */}
-      <div className="flex items-center justify-between text-xs p-3 rounded-xl bg-slate-900 border border-slate-800 text-slate-300">
-        <span className="flex items-center gap-2">
-          <Key className="w-4 h-4 text-indigo-400 shrink-0" />
-          <span>※ 鍵の生成はすべて「暗号鍵生成」で行います。それ以外では認めません。</span>
-        </span>
-        {onNavigateToKeyGenerator && (
-          <button
-            type="button"
-            onClick={onNavigateToKeyGenerator}
-            className="px-3 py-1 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 rounded-lg text-xs font-semibold border border-indigo-500/40 transition-colors shrink-0"
-          >
-            「暗号鍵生成」を開く
-          </button>
-        )}
-      </div>
-
       {/* Key & Hash Config */}
       <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <label className="text-xs font-semibold text-slate-200 flex items-center gap-1.5">
             <Key className="w-3.5 h-3.5 text-indigo-400" />
-            <span>鍵とハッシュの設定</span>
+            <span>RSA キーペア & パラメータ設定</span>
           </label>
           <div className="flex items-center gap-2">
-            <span className="text-[11px] text-slate-400">OAEP ハッシュ:</span>
+            <span className="text-xs text-slate-400">OAEP ハッシュ:</span>
             <select
               value={hashAlgo}
               onChange={(e) => setHashAlgo(e.target.value as HashAlgorithm)}
-              className="px-2.5 py-1 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 text-xs focus:outline-none focus:border-indigo-500 font-mono"
+              className="bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-1 text-indigo-300 font-mono text-xs focus:outline-none focus:border-indigo-500"
             >
-              <option value="SHA-256">SHA-256 (標準)</option>
+              <option value="SHA-256">SHA-256 (標準推奨)</option>
               <option value="SHA-384">SHA-384</option>
               <option value="SHA-512">SHA-512</option>
-              <option value="SHA-1">SHA-1 (互換性用)</option>
+              <option value="SHA-1">SHA-1 (互換用)</option>
             </select>
           </div>
         </div>
 
-        {rsaVaultKeys.length > 0 ? (
+        {rsaVaultKeys.length > 0 && (
           <div>
             <select
               value={selectedVaultKeyId}
@@ -370,10 +406,13 @@ export const RsaTool: React.FC<Props> = ({
                 const k = rsaVaultKeys.find((item) => item.id === e.target.value);
                 if (k?.publicKeyPem) setPublicKeyPem(k.publicKeyPem);
                 if (k?.privateKeyPem) setPrivateKeyPem(k.privateKeyPem);
+                if (k?.algorithmDetails?.hash) {
+                  setHashAlgo(k.algorithmDetails.hash as HashAlgorithm);
+                }
               }}
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500"
             >
-              <option value="">保管庫の RSA キーを選択</option>
+              <option value="">-- 保管庫の RSA キーから選択 --</option>
               {rsaVaultKeys.map((k) => (
                 <option key={k.id} value={k.id}>
                   {k.title}
@@ -381,66 +420,75 @@ export const RsaTool: React.FC<Props> = ({
               ))}
             </select>
           </div>
-        ) : (
-          <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-            <span>保管庫に RSA キーが登録されていません</span>
-            {onNavigateToKeyGenerator && (
-              <button
-                type="button"
-                onClick={onNavigateToKeyGenerator}
-                className="text-indigo-400 hover:underline"
-              >
-                「暗号鍵生成」で生成する
-              </button>
-            )}
-          </div>
         )}
 
-        {action === 'encrypt' ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+          {/* Public Key */}
           <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300">公開鍵 SPKI PEM</label>
-              <FileLoaderButton
-                label="PEM読込"
-                onFileLoaded={(content) => setPublicKeyPem(content.trim())}
-              />
-            </div>
-            <textarea
-              rows={3}
-              value={publicKeyPem}
-              onChange={(e) => setPublicKeyPem(e.target.value)}
-              placeholder="-----BEGIN PUBLIC KEY-----..."
-              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
-            />
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold text-slate-300">秘密鍵 PKCS#8 PEM</label>
-              <div className="flex items-center gap-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-semibold text-indigo-300">公開鍵 PEM (暗号化用)</span>
+              <div className="flex items-center gap-1">
+                <FileLoaderButton
+                  label="読込"
+                  onFileLoaded={(content) => setPublicKeyPem(content)}
+                />
                 <button
                   type="button"
-                  onClick={() => setIsPrivRevealed(!isPrivRevealed)}
-                  className="px-2 py-0.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs flex items-center gap-1"
+                  onClick={() => handleCopy(publicKeyPem, 'pub')}
+                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1"
                 >
-                  {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
-                  <span>{isPrivRevealed ? '隠す' : '表示'}</span>
+                  {copiedId === 'pub' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>コピー</span>
                 </button>
-                <FileLoaderButton
-                  label="PEM読込"
-                  onFileLoaded={(content) => setPrivateKeyPem(content.trim())}
-                />
               </div>
             </div>
             <textarea
-              rows={3}
-              value={isPrivRevealed ? privateKeyPem : privateKeyPem.replace(/[^-]/g, '*')}
-              onChange={(e) => setPrivateKeyPem(e.target.value)}
-              placeholder="-----BEGIN PRIVATE KEY-----..."
-              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
+              rows={4}
+              value={publicKeyPem}
+              onChange={(e) => setPublicKeyPem(e.target.value)}
+              placeholder="-----BEGIN PUBLIC KEY-----"
+              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
             />
           </div>
-        )}
+
+          {/* Private Key */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <span className="font-semibold text-rose-300">秘密鍵 PEM (復号用)</span>
+                <button
+                  type="button"
+                  onClick={() => setIsPrivRevealed(!isPrivRevealed)}
+                  className="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-0.5"
+                >
+                  {isPrivRevealed ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                  <span>{isPrivRevealed ? '伏せる' : '表示'}</span>
+                </button>
+              </div>
+              <div className="flex items-center gap-1">
+                <FileLoaderButton
+                  label="読込"
+                  onFileLoaded={(content) => setPrivateKeyPem(content)}
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCopy(privateKeyPem, 'priv')}
+                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs flex items-center gap-1"
+                >
+                  {copiedId === 'priv' ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>コピー</span>
+                </button>
+              </div>
+            </div>
+            <textarea
+              rows={4}
+              value={isPrivRevealed ? privateKeyPem : privateKeyPem ? '••••••••••••••••••••••••••••••••' : ''}
+              onChange={(e) => setPrivateKeyPem(e.target.value)}
+              placeholder="-----BEGIN PRIVATE KEY-----"
+              className="w-full p-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono text-xs focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+        </div>
       </div>
 
       {/* TEXT MODE */}
@@ -449,10 +497,10 @@ export const RsaTool: React.FC<Props> = ({
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-semibold text-slate-200">
-                {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
+                {action === 'encrypt' ? '暗号化する平文テキスト' : '復号する暗号文 (Base64)'}
               </label>
               <FileLoaderButton
-                label="ファイル読込"
+                label="読込"
                 onFileLoaded={(content) => {
                   if (action === 'encrypt') setPlainText(content);
                   else setCipherText(content);
@@ -468,29 +516,29 @@ export const RsaTool: React.FC<Props> = ({
               }}
               placeholder={
                 action === 'encrypt'
-                  ? '暗号化したいテキストを入力...'
-                  : '復号したいBase64暗号文を入力...'
+                  ? '平文メッセージを入力（Linux / PowerShell からも復号可能）'
+                  : 'Base64 暗号文を入力（Linux openssl pkeyutl の出力も対応）'
               }
-              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
+              className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
             />
-
-            {textError && (
-              <div className="p-3 bg-rose-950/40 border border-rose-800/60 rounded-xl text-rose-300 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-                <span>{textError}</span>
-              </div>
-            )}
-
-            <button
-              type="button"
-              disabled={isProcessingText}
-              onClick={action === 'encrypt' ? handleTextEncrypt : handleTextDecrypt}
-              className="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shadow-sm disabled:opacity-50"
-            >
-              {action === 'encrypt' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
-              <span>{isProcessingText ? '処理中...' : action === 'encrypt' ? '暗号化を実行' : '復号を実行'}</span>
-            </button>
           </div>
+
+          {textError && (
+            <div className="p-3 rounded-xl bg-rose-950/40 border border-rose-800/60 text-xs text-rose-300 flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{textError}</span>
+            </div>
+          )}
+
+          <button
+            type="button"
+            disabled={isProcessingText || (action === 'encrypt' ? !plainText : !cipherText)}
+            onClick={action === 'encrypt' ? handleTextEncrypt : handleTextDecrypt}
+            className="w-full py-2.5 rounded-lg font-semibold text-xs bg-indigo-600 hover:bg-indigo-500 text-white transition-colors flex items-center justify-center gap-2 disabled:opacity-50 shadow-sm"
+          >
+            {action === 'encrypt' ? <Lock className="w-4 h-4" /> : <Unlock className="w-4 h-4" />}
+            <span>{isProcessingText ? '処理中...' : action === 'encrypt' ? 'RSA暗号化を実行' : 'RSA復号を実行'}</span>
+          </button>
 
           {action === 'encrypt' && cipherText && (
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-2">
@@ -512,7 +560,7 @@ export const RsaTool: React.FC<Props> = ({
                 readOnly
                 value={cipherText}
                 rows={4}
-                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono select-all focus:outline-none"
+                className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-indigo-300 text-xs font-mono select-all focus:outline-none"
               />
             </div>
           )}
@@ -547,9 +595,41 @@ export const RsaTool: React.FC<Props> = ({
       {/* FILE MODE */}
       {targetType === 'file' && (
         <div className="space-y-5">
+          {action === 'encrypt' && (
+            <div className="flex items-center gap-2 p-3 bg-slate-900/60 border border-slate-800 rounded-xl text-xs">
+              <span className="text-slate-400 font-semibold">ファイル形式:</span>
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setFileEncFormat('raw-binary')}
+                  className={`px-3 py-1 rounded transition-colors ${
+                    fileEncFormat === 'raw-binary'
+                      ? 'bg-emerald-600 text-white font-medium'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  OpenSSL raw バイナリ (.bin) - CLI完全互換
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFileEncFormat('hybrid')}
+                  className={`px-3 py-1 rounded transition-colors ${
+                    fileEncFormat === 'hybrid'
+                      ? 'bg-indigo-600 text-white font-medium'
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                >
+                  ハイブリッド暗号 (.rsa) - 大容量ファイル対応
+                </button>
+              </div>
+            </div>
+          )}
+
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 space-y-4">
             <label className="text-xs font-semibold text-slate-200 block">
-              {action === 'encrypt' ? '暗号化するファイル' : '復号する暗号化ファイル'}
+              {action === 'encrypt'
+                ? '暗号化するファイル'
+                : '復号する暗号化ファイル (Linux / PowerShell で openssl pkeyutl 暗号化した .bin / .enc も自動対応)'}
             </label>
             <input
               ref={fileInputRef}
@@ -572,7 +652,9 @@ export const RsaTool: React.FC<Props> = ({
               ) : (
                 <div>
                   <div className="text-xs text-slate-300 font-medium">クリックしてファイルを選択</div>
-                  <div className="text-[11px] text-slate-500 mt-1">ハイブリッド暗号化（AES-256 + RSA）により大容量ファイルにも対応</div>
+                  <div className="text-[11px] text-slate-500 mt-1">
+                    Linux OpenSSL `openssl pkeyutl` 出力ファイル (.bin / .enc) またはハイブリッド (.rsa)
+                  </div>
                 </div>
               )}
             </div>
@@ -618,6 +700,20 @@ export const RsaTool: React.FC<Props> = ({
           )}
         </div>
       )}
+
+      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
+      <CrossPlatformCliPanel
+        title="Linux (OpenSSL pkeyutl) & Windows PowerShell 互換コマンド"
+        defaultOpen={false}
+        linuxCommand={getRsaLinuxCommand({
+          action,
+          hashAlgo,
+          isBase64: targetType === 'text',
+        })}
+        powerShellScript={psScriptObj.nativePowerShell}
+        powerShellCli={psScriptObj.openSslCli}
+        note="PKCS#8 PEM 鍵形式および RSA-OAEP パディングは Linux の openssl pkeyutl や Windows PowerShell の .NET RSA と 100% 互換です。"
+      />
     </div>
   );
 };

@@ -6,6 +6,11 @@ import {
   ExtractedZipItem,
 } from '../utils/zipUtils';
 import {
+  getZipLinuxCommand,
+  getZipPowerShellScript,
+} from '../utils/opensslInterop';
+import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
+import {
   FileArchive,
   Lock,
   Unlock,
@@ -512,6 +517,42 @@ export const EncryptedZipTool: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Linux & Windows PowerShell Cross-Platform Compatibility Panel */}
+      <CrossPlatformCliPanel
+        title="Linux & Windows PowerShell ZIP互換コマンド"
+        defaultOpen={false}
+        linuxCommand={getZipLinuxCommand({
+          action: activeTab,
+          filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
+          password: activeTab === 'create' ? zipPassword : extractPassword,
+          strength: encStrength,
+          files: selectedFiles.map((f) => f.name),
+        })}
+        powerShellScript={
+          getZipPowerShellScript({
+            action: activeTab,
+            filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
+            password: activeTab === 'create' ? zipPassword : extractPassword,
+            strength: encStrength,
+            files: selectedFiles.map((f) => f.name),
+          }).nativePowerShell
+        }
+        powerShellCli={
+          getZipPowerShellScript({
+            action: activeTab,
+            filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
+            password: activeTab === 'create' ? zipPassword : extractPassword,
+            strength: encStrength,
+            files: selectedFiles.map((f) => f.name),
+          }).openSslCli
+        }
+        note={
+          encStrength === 'aes-256'
+            ? 'AES-256 (WinZip AE-2規格): Linuxでは 7z x -pパスワード またはAES対応unzip、Windowsでは 7z CLI またはエクスプローラーで解凍できます。'
+            : 'ZipCrypto (標準ZIP規格): Linuxの標準 unzip および Windows標準エクスプローラーで追加ソフトなしに解凍可能です。'
+        }
+      />
     </div>
   );
 };

@@ -9,13 +9,23 @@ import {
   bufferToString,
   base64ToBuffer,
   bufferToBase64,
+  bufferToHex,
   encryptFileAesPassword,
   decryptFileAesPassword,
   encryptFileAesRaw,
   decryptFileAesRaw,
   detectEncryptedFileMetadata,
 } from '../utils/cryptoUtils';
+import {
+  encryptOpenSslAes,
+  decryptOpenSslAes,
+  isOpenSslEnc,
+  isOpenSslEncBase64,
+  getAesLinuxCommand,
+  getAesPowerShellScript,
+} from '../utils/opensslInterop';
 import { FileLoaderButton } from './FileLoaderButton';
+import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -29,6 +39,8 @@ import {
   AlertCircle,
   CheckCircle2,
   FileText,
+  Sliders,
+  Terminal,
 } from 'lucide-react';
 
 interface Props {
@@ -51,8 +63,12 @@ export const AesTool: React.FC<Props> = ({
   const [targetType, setTargetType] = useState<'text' | 'file'>('text');
 
   // Mode & Key length state
-  const [aesMode, setAesMode] = useState<AesCipherMode>('AES-GCM');
+  const [aesMode, setAesMode] = useState<AesCipherMode>('AES-CBC');
   const [aesKeyLength, setAesKeyLength] = useState<128 | 192 | 256>(256);
+
+  // OpenSSL / PowerShell compatibility mode
+  const [useOpenSslFormat, setUseOpenSslFormat] = useState(true);
+  const [iterations, setIterations] = useState<number>(100000);
 
   // Key state
   const [keyInputType, setKeyInputType] = useState<'password' | 'raw' | 'vault'>('password');
@@ -97,6 +113,10 @@ export const AesTool: React.FC<Props> = ({
       if (selectedKey.key.rawKeyBase64) {
         setRawKeyBase64(selectedKey.key.rawKeyBase64);
       }
+      if (selectedKey.key.type === 'aes-gcm') setAesMode('AES-GCM');
+      else if (selectedKey.key.type === 'aes-cbc') setAesMode('AES-CBC');
+      else if (selectedKey.key.type === 'aes-ctr') setAesMode('AES-CTR');
+
       onClearSelectedKey?.();
     }
   }, [selectedKey, onClearSelectedKey]);
@@ -124,7 +144,6 @@ export const AesTool: React.FC<Props> = ({
       if (!rawB64.trim()) throw new Error('Base64 共通鍵を入力してください（「暗号鍵生成」ツールで生成できます）');
       const buf = new Uint8Array(base64ToBuffer(rawB64.trim()));
       if (buf.length !== requiredBytes) {
-        // If provided key length doesn't match selected, slice or pad appropriately
         if (buf.length > requiredBytes) return buf.slice(0, requiredBytes);
         throw new Error(`指定の鍵長 (${aesKeyLength} bit / ${requiredBytes} バイト) に対し、入力された鍵は ${buf.length} バイトです`);
       }
@@ -147,10 +166,17 @@ export const AesTool: React.FC<Props> = ({
     }
     setIsProcessingText(true);
     try {
-      const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
-      const plainBuf = stringToBuffer(plainText);
-      const encRes = await aesEncryptAdvanced(keyBuf.buffer as ArrayBuffer, plainBuf, aesMode);
-      setCipherText(encRes.combinedBase64);
+      if (keyInputType === 'password' && useOpenSslFormat) {
+        if (!password.trim()) throw new Error('パスワードを入力してください');
+        const plainBuf = stringToBuffer(plainText);
+        const cipherBytes = await encryptOpenSslAes(plainBuf, password.trim(), aesKeyLength, iterations);
+        setCipherText(bufferToBase64(cipherBytes.buffer as ArrayBuffer));
+      } else {
+        const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
+        const plainBuf = stringToBuffer(plainText);
+        const encRes = await aesEncryptAdvanced(keyBuf.buffer as ArrayBuffer, plainBuf, aesMode);
+        setCipherText(encRes.combinedBase64);
+      }
     } catch (err: any) {
       setTextError(err.message || '暗号化エラー');
     } finally {
@@ -162,14 +188,36 @@ export const AesTool: React.FC<Props> = ({
   const handleTextDecrypt = async () => {
     setTextError('');
     setDecryptedText('');
-    if (!cipherText.trim()) {
+    const trimmedCipher = cipherText.trim();
+    if (!trimmedCipher) {
       setTextError('復号する暗号文 Base64 を入力してください');
       return;
     }
     setIsProcessingText(true);
     try {
+      // Auto-detect OpenSSL Salted__ Base64 or if user specified OpenSSL format with password
+      if (isOpenSslEncBase64(trimmedCipher) || (keyInputType === 'password' && useOpenSslFormat)) {
+        if (!password.trim()) throw new Error('OpenSSL形式の暗号文です。パスワードを入力してください。');
+        try {
+          const cipherBuf = new Uint8Array(base64ToBuffer(trimmedCipher));
+          const decBytes = await decryptOpenSslAes(cipherBuf, password.trim(), aesKeyLength, iterations);
+          setDecryptedText(bufferToString(decBytes.buffer as ArrayBuffer));
+          return;
+        } catch (e: any) {
+          // If auto-detect fails, attempt standard fallback if raw/vault
+          if (keyInputType !== 'password') {
+            const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
+            const cipherBuf = base64ToBuffer(trimmedCipher);
+            const decBuf = await aesDecryptAdvanced(keyBuf.buffer as ArrayBuffer, cipherBuf, aesMode);
+            setDecryptedText(bufferToString(decBuf));
+            return;
+          }
+          throw e;
+        }
+      }
+
       const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
-      const cipherBuf = base64ToBuffer(cipherText.trim());
+      const cipherBuf = base64ToBuffer(trimmedCipher);
       const decBuf = await aesDecryptAdvanced(keyBuf.buffer as ArrayBuffer, cipherBuf, aesMode);
       setDecryptedText(bufferToString(decBuf));
     } catch (err: any) {
@@ -211,7 +259,11 @@ export const AesTool: React.FC<Props> = ({
         let outBuffer: ArrayBuffer;
         const outFilename = `${selectedFile.name}.enc`;
 
-        if (keyInputType === 'password') {
+        if (keyInputType === 'password' && useOpenSslFormat) {
+          if (!password.trim()) throw new Error('パスワードを入力してください');
+          const encBytes = await encryptOpenSslAes(selectedFile.buffer, password.trim(), aesKeyLength, iterations);
+          outBuffer = encBytes.buffer as ArrayBuffer;
+        } else if (keyInputType === 'password') {
           if (!password.trim()) throw new Error('パスワードを入力してください');
           outBuffer = await encryptFileAesPassword(selectedFile.buffer, selectedFile.name, password.trim());
         } else {
@@ -229,15 +281,27 @@ export const AesTool: React.FC<Props> = ({
         });
       } else {
         let decrypted: { filename: string; fileData: ArrayBuffer };
-        const meta = detectEncryptedFileMetadata(selectedFile.buffer);
 
-        if (meta?.mode === 'aes-raw' || keyInputType === 'raw' || keyInputType === 'vault') {
-          const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
-          const rawKeyBuffer = keyBuf.buffer.slice(keyBuf.byteOffset, keyBuf.byteOffset + keyBuf.byteLength) as ArrayBuffer;
-          decrypted = await decryptFileAesRaw(selectedFile.buffer, rawKeyBuffer);
+        // Auto-detect OpenSSL Salted__ binary header from Linux/PowerShell
+        if (isOpenSslEnc(selectedFile.buffer)) {
+          if (!password.trim()) throw new Error('Linux / PowerShell (OpenSSL) 形式の暗号化ファイルです。パスワードを入力してください。');
+          const decBytes = await decryptOpenSslAes(selectedFile.buffer, password.trim(), aesKeyLength, iterations);
+          const baseName = selectedFile.name.endsWith('.enc') ? selectedFile.name.slice(0, -4) : `decrypted_${selectedFile.name}`;
+          decrypted = {
+            filename: baseName,
+            fileData: decBytes.buffer as ArrayBuffer,
+          };
         } else {
-          if (!password.trim()) throw new Error('パスワードを入力してください');
-          decrypted = await decryptFileAesPassword(selectedFile.buffer, password.trim());
+          const meta = detectEncryptedFileMetadata(selectedFile.buffer);
+
+          if (meta?.mode === 'aes-raw' || keyInputType === 'raw' || keyInputType === 'vault') {
+            const keyBuf = await getEffectiveKeyBuffer(keyInputType, password, rawKeyBase64, selectedVaultKeyId);
+            const rawKeyBuffer = keyBuf.buffer.slice(keyBuf.byteOffset, keyBuf.byteOffset + keyBuf.byteLength) as ArrayBuffer;
+            decrypted = await decryptFileAesRaw(selectedFile.buffer, rawKeyBuffer);
+          } else {
+            if (!password.trim()) throw new Error('パスワードを入力してください');
+            decrypted = await decryptFileAesPassword(selectedFile.buffer, password.trim());
+          }
         }
 
         const blob = new Blob([decrypted.fileData], { type: 'application/octet-stream' });
@@ -255,6 +319,17 @@ export const AesTool: React.FC<Props> = ({
     }
   };
 
+  const psScriptObj = getAesPowerShellScript({
+    action,
+    keyLength: aesKeyLength,
+    isBase64: targetType === 'text',
+    filename: selectedFile?.name,
+    hasPassword: keyInputType === 'password',
+    password: password.trim() || undefined,
+    iterations,
+    rawKeyBase64: keyInputType !== 'password' ? rawKeyBase64 : undefined,
+  });
+
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Header */}
@@ -267,11 +342,11 @@ export const AesTool: React.FC<Props> = ({
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-slate-100">AES 暗号化スタジオ</h2>
               <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-mono font-medium">
-                {aesMode} ({aesKeyLength}bit)
+                {useOpenSslFormat ? `OpenSSL互換 CBC (${aesKeyLength}bit)` : `${aesMode} (${aesKeyLength}bit)`}
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              NIST FIPS 197 / SP 800-38 準拠の全AES規格（GCM / CBC / CTR 及び 128/192/256bit 鍵長）に対応
+              Linux (OpenSSL CLI) および Windows PowerShell との 100% 相互互換（Salted__ / PBKDF2）に対応
             </p>
           </div>
         </div>
@@ -352,92 +427,98 @@ export const AesTool: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* Mode & Specification Selection (GCM, CBC, CTR / 128, 192, 256) */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="text-xs font-semibold text-slate-200 flex items-center justify-between mb-1.5">
-            <span>暗号化規格・動作モード (AES Mode)</span>
-            <span className="text-[10px] text-slate-400 font-mono">NIST SP 800-38</span>
-          </label>
-          <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
+      {/* Compatibility Mode & Parameters Selection */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+          <div className="flex items-center gap-2">
+            <Sliders className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="text-xs font-semibold text-slate-200">暗号化形式 (Format)</span>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={() => setAesMode('AES-GCM')}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesMode === 'AES-GCM'
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => {
+                setUseOpenSslFormat(true);
+                setAesMode('AES-CBC');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                useOpenSslFormat
+                  ? 'bg-emerald-600 text-white shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
               }`}
-              title="Galois/Counter Mode: 認証タグ(AEAD)により完全性と機密性を同時保証"
             >
-              GCM (AEAD)
+              <Terminal className="w-3.5 h-3.5" />
+              <span>Linux / PowerShell 互換 (Salted__ / PBKDF2)</span>
             </button>
             <button
               type="button"
-              onClick={() => setAesMode('AES-CBC')}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesMode === 'AES-CBC'
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
+              onClick={() => setUseOpenSslFormat(false)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                !useOpenSslFormat
+                  ? 'bg-indigo-600 text-white shadow-sm'
+                  : 'bg-slate-950 text-slate-400 hover:text-slate-200 border border-slate-800'
               }`}
-              title="Cipher Block Chaining: 暗号ブロック連鎖 + PKCS#7パディング"
             >
-              CBC (PKCS#7)
-            </button>
-            <button
-              type="button"
-              onClick={() => setAesMode('AES-CTR')}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesMode === 'AES-CTR'
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-              title="Counter Mode: カウンタ値の暗号化によるストリーム型ブロック暗号"
-            >
-              CTR (カウンタ)
+              WebCrypto Raw / GCM
             </button>
           </div>
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-slate-200 flex items-center justify-between mb-1.5">
-            <span>鍵長規格 (Key Length)</span>
-            <span className="text-[10px] text-slate-400 font-mono">FIPS 197</span>
-          </label>
-          <div className="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-lg border border-slate-800 text-[11px]">
-            <button
-              type="button"
-              onClick={() => setAesKeyLength(256)}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesKeyLength === 256
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+          {/* Mode */}
+          <div>
+            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+              動作モード
+            </label>
+            {useOpenSslFormat ? (
+              <div className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-emerald-400 font-mono">
+                CBC (PKCS#7パディング - OpenSSL標準)
+              </div>
+            ) : (
+              <select
+                value={aesMode}
+                onChange={(e) => setAesMode(e.target.value as AesCipherMode)}
+                className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-indigo-300 font-mono focus:outline-none focus:border-indigo-500"
+              >
+                <option value="AES-GCM">AES-GCM (AEAD 認証暗号)</option>
+                <option value="AES-CBC">AES-CBC (PKCS#7)</option>
+                <option value="AES-CTR">AES-CTR (カウンタモード)</option>
+              </select>
+            )}
+          </div>
+
+          {/* Key Length */}
+          <div>
+            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+              鍵長 (Key Length)
+            </label>
+            <select
+              value={aesKeyLength}
+              onChange={(e) => setAesKeyLength(Number(e.target.value) as 128 | 192 | 256)}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-indigo-300 font-mono focus:outline-none focus:border-indigo-500"
             >
-              256 bit (最高強度)
-            </button>
-            <button
-              type="button"
-              onClick={() => setAesKeyLength(192)}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesKeyLength === 192
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              <option value="256">AES-256 (256 bit / 最高強度)</option>
+              <option value="192">AES-192 (192 bit / 標準)</option>
+              <option value="128">AES-128 (128 bit / 軽量)</option>
+            </select>
+          </div>
+
+          {/* PBKDF2 Iterations */}
+          <div>
+            <label className="text-xs font-semibold text-slate-300 block mb-1.5">
+              PBKDF2 ハッシュ反復回数
+            </label>
+            <select
+              value={iterations}
+              onChange={(e) => setIterations(Number(e.target.value))}
+              disabled={!useOpenSslFormat && keyInputType !== 'password'}
+              className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-xs text-indigo-300 font-mono focus:outline-none focus:border-indigo-500 disabled:opacity-50"
             >
-              192 bit (標準)
-            </button>
-            <button
-              type="button"
-              onClick={() => setAesKeyLength(128)}
-              className={`py-1.5 px-2 rounded text-center transition-colors ${
-                aesKeyLength === 128
-                  ? 'bg-indigo-600 text-white font-bold'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              128 bit (軽量)
-            </button>
+              <option value="100000">100,000回 (OpenSSL 3.x デフォルト推奨)</option>
+              <option value="10000">10,000回 (OpenSSL 1.1.1 互換)</option>
+              <option value="200000">200,000回 (高セキュリティ)</option>
+            </select>
           </div>
         </div>
       </div>
@@ -459,11 +540,14 @@ export const AesTool: React.FC<Props> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              パスワード
+              パスワード (推奨)
             </button>
             <button
               type="button"
-              onClick={() => setKeyInputType('raw')}
+              onClick={() => {
+                setKeyInputType('raw');
+                setUseOpenSslFormat(false);
+              }}
               className={`px-2.5 py-1 rounded transition-colors ${
                 keyInputType === 'raw'
                   ? 'bg-indigo-600 text-white font-medium'
@@ -474,7 +558,10 @@ export const AesTool: React.FC<Props> = ({
             </button>
             <button
               type="button"
-              onClick={() => setKeyInputType('vault')}
+              onClick={() => {
+                setKeyInputType('vault');
+                setUseOpenSslFormat(false);
+              }}
               className={`px-2.5 py-1 rounded transition-colors ${
                 keyInputType === 'vault'
                   ? 'bg-indigo-600 text-white font-medium'
@@ -492,13 +579,13 @@ export const AesTool: React.FC<Props> = ({
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="パスワードを入力"
+              placeholder="パスワードを入力（Linux / PowerShell の -pass pass: と同一）"
               className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
             />
             <FileLoaderButton
               label="鍵ファイル読込"
               onFileLoaded={(content) => setPassword(content.trim())}
-              title="パスワードや秘密鍵ファイルを指定"
+              title="パスワードファイルを指定"
             />
           </div>
         )}
@@ -509,20 +596,19 @@ export const AesTool: React.FC<Props> = ({
               type="text"
               value={rawKeyBase64}
               onChange={(e) => setRawKeyBase64(e.target.value)}
-              placeholder="32バイトのBase64鍵を入力"
+              placeholder="Base64鍵を入力"
               className="flex-1 px-3.5 py-2.5 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs font-mono focus:outline-none focus:border-indigo-500"
             />
             <FileLoaderButton
               label="鍵ファイル読込"
               mode="base64"
               onFileLoaded={(content) => setRawKeyBase64(content)}
-              title="32バイト共通鍵バイナリまたはBase64ファイルを指定"
+              title="共通鍵バイナリまたはBase64ファイルを指定"
             />
             {onNavigateToKeyGenerator && (
               <button
                 type="button"
                 onClick={onNavigateToKeyGenerator}
-                title="鍵生成はすべて「暗号鍵生成」で行います"
                 className="px-3.5 py-2 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 text-xs font-semibold border border-indigo-500/40 flex items-center gap-1.5 shrink-0 transition-colors"
               >
                 <Key className="w-3.5 h-3.5" />
@@ -536,7 +622,7 @@ export const AesTool: React.FC<Props> = ({
           <div>
             {aesVaultKeys.length === 0 ? (
               <div className="p-3 bg-slate-950/60 rounded-lg border border-slate-800 text-[11px] text-slate-400">
-                鍵保管庫に登録された AES-GCM 共通鍵がありません
+                鍵保管庫に登録された AES 共通鍵がありません。「暗号鍵生成」から登録できます。
               </div>
             ) : (
               <select
@@ -566,7 +652,7 @@ export const AesTool: React.FC<Props> = ({
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-300">
-                {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64'}
+                {action === 'encrypt' ? '暗号化する平文' : '復号する暗号文 Base64 (OpenSSL U2FsdGVkX1... 対応)'}
               </label>
               <FileLoaderButton
                 label="ファイルから読込"
@@ -593,7 +679,11 @@ export const AesTool: React.FC<Props> = ({
                 }
               }}
               rows={4}
-              placeholder={action === 'encrypt' ? 'テキストを入力' : 'Base64 暗号文を貼り付け'}
+              placeholder={
+                action === 'encrypt'
+                  ? '暗号化するテキストを入力'
+                  : 'Base64 暗号文を貼り付け (Linux OpenSSLの出力 U2FsdGVkX1... も自動検出してそのまま復号できます)'
+              }
               className="w-full p-3 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 text-xs focus:outline-none focus:border-indigo-500 font-mono"
             />
           </div>
@@ -629,7 +719,7 @@ export const AesTool: React.FC<Props> = ({
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-indigo-400 flex items-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  暗号化結果 Base64
+                  暗号化結果 Base64 {useOpenSslFormat && '(OpenSSL Salted__ 形式)'}
                 </span>
                 <button
                   type="button"
@@ -699,7 +789,9 @@ export const AesTool: React.FC<Props> = ({
         <div className="space-y-5">
           <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-4 space-y-3">
             <label className="text-xs font-bold text-slate-300">
-              {action === 'encrypt' ? '暗号化するファイル' : '復号する暗号化ファイル'}
+              {action === 'encrypt'
+                ? '暗号化するファイル'
+                : '復号する暗号化ファイル (Linux / PowerShell で openssl enc 暗号化した .enc も自動対応)'}
             </label>
             <input
               ref={fileInputRef}
@@ -778,6 +870,26 @@ export const AesTool: React.FC<Props> = ({
           )}
         </div>
       )}
+
+      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
+      <CrossPlatformCliPanel
+        title="Linux (OpenSSL) & Windows PowerShell 互換コマンド"
+        defaultOpen={false}
+        linuxCommand={getAesLinuxCommand({
+          action,
+          keyLength: aesKeyLength,
+          isBase64: targetType === 'text',
+          filename: selectedFile?.name,
+          hasPassword: keyInputType === 'password',
+          password: password.trim() || undefined,
+          iterations,
+          rawKeyHex: keyInputType !== 'password' && rawKeyBase64 ? bufferToHex(base64ToBuffer(rawKeyBase64)) : undefined,
+          mode: aesMode,
+        })}
+        powerShellScript={psScriptObj.nativePowerShell}
+        powerShellCli={psScriptObj.openSslCli}
+        note="このアプリで生成した .enc ファイルや暗号文は、Linuxの openssl コマンドおよび Windows PowerShell ネイティブスクリプトの両方でそのまま復号・照合できます。"
+      />
     </div>
   );
 };

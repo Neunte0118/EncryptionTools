@@ -24,7 +24,7 @@ export const UnifiedCompressionTool: React.FC = () => {
               format === 'zip' ? 'bg-indigo-600 text-white font-medium' : 'text-slate-400 hover:text-slate-200'
             }`}
           >
-            ZIP 暗号化
+            ZIP (標準 / 暗号化)
           </button>
           <button
             type="button"

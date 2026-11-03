@@ -21,11 +21,9 @@ import {
   decryptOpenSslAes,
   isOpenSslEnc,
   isOpenSslEncBase64,
-  getAesLinuxCommand,
-  getAesPowerShellScript,
 } from '../utils/opensslInterop';
 import { FileLoaderButton } from './FileLoaderButton';
-import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -319,16 +317,6 @@ export const AesTool: React.FC<Props> = ({
     }
   };
 
-  const psScriptObj = getAesPowerShellScript({
-    action,
-    keyLength: aesKeyLength,
-    isBase64: targetType === 'text',
-    filename: selectedFile?.name,
-    hasPassword: keyInputType === 'password',
-    password: password.trim() || undefined,
-    iterations,
-    rawKeyBase64: keyInputType !== 'password' ? rawKeyBase64 : undefined,
-  });
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -871,24 +859,11 @@ export const AesTool: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
-      <CrossPlatformCliPanel
-        title="Linux (OpenSSL) & Windows PowerShell 互換コマンド"
-        defaultOpen={false}
-        linuxCommand={getAesLinuxCommand({
-          action,
-          keyLength: aesKeyLength,
-          isBase64: targetType === 'text',
-          filename: selectedFile?.name,
-          hasPassword: keyInputType === 'password',
-          password: password.trim() || undefined,
-          iterations,
-          rawKeyHex: keyInputType !== 'password' && rawKeyBase64 ? bufferToHex(base64ToBuffer(rawKeyBase64)) : undefined,
-          mode: aesMode,
-        })}
-        powerShellScript={psScriptObj.nativePowerShell}
-        powerShellCli={psScriptObj.openSslCli}
-        note="このアプリで生成した .enc ファイルや暗号文は、Linuxの openssl コマンドおよび Windows PowerShell ネイティブスクリプトの両方でそのまま復号・照合できます。"
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="なし (ブラウザ標準 Web Crypto API)"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理)"
       />
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import {
   KeyVaultFile,
   KeyVaultItem,
@@ -8,8 +8,6 @@ import {
   appendKeyToVault,
   deleteKeyFromVault,
   updateKeyInVault,
-  exportVaultToFile,
-  parseVaultFile,
 } from '../utils/vaultStorage';
 import {
   Upload,
@@ -28,7 +26,18 @@ import {
   ArrowRight,
   Save,
   X,
+  CheckCircle2,
+  ShieldCheck,
+  ShieldAlert,
+  AlertTriangle,
+  Clock,
+  Sparkles,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
+import { VaultExportModal } from './VaultExportModal';
+import { VaultImportModal } from './VaultImportModal';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 
 interface Props {
   vault: KeyVaultFile;
@@ -48,6 +57,33 @@ export const KeyVaultManager: React.FC<Props> = ({
   const [revealedPrivateKeys, setRevealedPrivateKeys] = useState<Record<string, boolean>>({});
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
+  // Export & Import Modals
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isImportModalOpen, setIsImportModalOpen] = useState(false);
+  const [exportTargetKeyId, setExportTargetKeyId] = useState<string | undefined>(undefined);
+  const [notification, setNotification] = useState<string | null>(null);
+
+
+  // Backup state & Audit state
+  const [lastBackupTime, setLastBackupTime] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem('local_crypto_vault_last_backup');
+    } catch {
+      return null;
+    }
+  });
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
+
+  const handleVaultMerged = (
+    updatedVault: KeyVaultFile,
+    stats: { added: number; duplicates: number; mode: 'merge' | 'overwrite' }
+  ) => {
+    onVaultChange(updatedVault);
+    const dupText = stats.duplicates > 0 ? ` (${stats.duplicates} 件重複スキップ)` : '';
+    setNotification(`インポート完了: ${stats.added} 件の鍵を追加しました${dupText}`);
+    setTimeout(() => setNotification(null), 5000);
+  };
+
   // Edit State
   const [editingKeyId, setEditingKeyId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
@@ -62,8 +98,6 @@ export const KeyVaultManager: React.FC<Props> = ({
   const [newPrivateKeyPem, setNewPrivateKeyPem] = useState('');
   const [modalError, setModalError] = useState('');
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleCopy = (text: string, id: string) => {
     navigator.clipboard.writeText(text);
     setCopiedId(id);
@@ -77,24 +111,7 @@ export const KeyVaultManager: React.FC<Props> = ({
     }));
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const parsedVault = parseVaultFile(text);
-        onVaultChange(parsedVault);
-      } catch (err: any) {
-        alert(err.message || 'ファイルの読み込みに失敗しました');
-      } finally {
-        if (fileInputRef.current) fileInputRef.current.value = '';
-      }
-    };
-    reader.readAsText(file);
-  };
 
   const handleDeleteKey = (id: string, title: string) => {
     if (window.confirm(`鍵「${title}」をファイルから削除しますか？`)) {
@@ -161,12 +178,51 @@ export const KeyVaultManager: React.FC<Props> = ({
     return matchesSearch && matchesType;
   });
 
+  // Audit Metrics
+  const weakRsaKeys = vault.keys.filter((k) => {
+    if (k.type.startsWith('rsa') && k.algorithmDetails?.modulusLength) {
+      return k.algorithmDetails.modulusLength < 2048;
+    }
+    return false;
+  });
+  const legacyPkcs1Keys = vault.keys.filter((k) => k.type === 'rsa-pkcs1');
+  const unmemoedKeys = vault.keys.filter((k) => !k.memo || !k.memo.trim());
+  const modernKeys = vault.keys.filter(
+    (k) =>
+      k.type === 'ed25519' ||
+      k.type === 'x25519' ||
+      k.type === 'ecdsa' ||
+      k.type === 'ecdh' ||
+      k.type === 'pqc-kem' ||
+      k.type === 'pqc-dsa' ||
+      (k.type.startsWith('rsa') && (k.algorithmDetails?.modulusLength || 0) >= 2048) ||
+      k.type === 'aes-gcm'
+  );
+  const unbackedUpKeys = vault.keys.filter((k) => {
+    if (!lastBackupTime) return true;
+    return new Date(k.createdAt).getTime() > new Date(lastBackupTime).getTime();
+  });
+
+  let healthScore = 100;
+  if (weakRsaKeys.length > 0) healthScore -= weakRsaKeys.length * 25;
+  if (legacyPkcs1Keys.length > 0) healthScore -= legacyPkcs1Keys.length * 15;
+  if (unmemoedKeys.length > 0) healthScore -= Math.min(unmemoedKeys.length * 5, 20);
+  if (vault.keys.length === 0) healthScore = 100;
+  healthScore = Math.max(20, healthScore);
+
   return (
     <div className="space-y-6">
+      {/* External Library & Network Specs Badge */}
+      <FeatureLibraryBadge
+        library="@zip.js/zip.js (ZIP出力時) / ブラウザ標準 Web Crypto API"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理・完全オフライン)"
+      />
+
       {/* Top File Action Toolbar */}
       <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 bg-slate-900 border border-slate-800 rounded-lg p-4">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Key className="w-5 h-5 text-indigo-400" />
             <h2 className="text-base font-semibold text-slate-100">
               {vault.vaultName || '鍵管理ファイル'}
@@ -174,6 +230,23 @@ export const KeyVaultManager: React.FC<Props> = ({
             <span className="text-xs bg-slate-800 text-slate-400 px-2 py-0.5 rounded font-mono">
               {vault.keys.length} 鍵登録済み
             </span>
+            {vault.keys.length > 0 && (
+              <button
+                onClick={() => setIsAuditOpen((prev) => !prev)}
+                className={`flex items-center gap-1.5 px-2.5 py-0.5 text-xs rounded-md border font-medium transition-colors ${
+                  healthScore >= 90
+                    ? 'bg-emerald-950/50 text-emerald-300 border-emerald-800 hover:bg-emerald-900/50'
+                    : healthScore >= 70
+                    ? 'bg-amber-950/50 text-amber-300 border-amber-800 hover:bg-amber-900/50'
+                    : 'bg-rose-950/50 text-rose-300 border-rose-800 hover:bg-rose-900/50'
+                }`}
+                title="保管庫セキュリティ診断レポートの表示切替"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>診断: {healthScore}点</span>
+                {isAuditOpen ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            )}
           </div>
         </div>
 
@@ -189,29 +262,27 @@ export const KeyVaultManager: React.FC<Props> = ({
             </button>
           )}
 
-          {/* Load from File */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,application/json"
-            onChange={handleFileUpload}
-            className="hidden"
-          />
+          {/* Import Modal Button */}
           <button
-            onClick={() => fileInputRef.current?.click()}
+            onClick={() => setIsImportModalOpen(true)}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
+            title="保管庫ファイルのインポート・復元 (.encvault, .json, .zip, .pem)"
           >
             <Upload className="w-3.5 h-3.5 text-sky-400 shrink-0" />
-            <span>ファイル読込</span>
+            <span>インポート (読込)</span>
           </button>
 
-          {/* Download/Export File */}
+          {/* Export Modal Button */}
           <button
-            onClick={() => exportVaultToFile(vault)}
+            onClick={() => {
+              setExportTargetKeyId(undefined);
+              setIsExportModalOpen(true);
+            }}
             className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
+            title="保管庫ファイルのエクスポート・バックアップ (暗号化/JSON/ZIP)"
           >
-            <Download className="w-3.5 h-3.5 shrink-0" />
-            <span>ファイル書出</span>
+            <Download className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <span>エクスポート (書出)</span>
           </button>
 
           {/* Manual Add Key */}
@@ -219,11 +290,134 @@ export const KeyVaultManager: React.FC<Props> = ({
             onClick={() => setIsAddModalOpen(true)}
             className="w-full sm:w-auto flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-md transition-colors"
           >
-            <Plus className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+            <Plus className="w-3.5 h-3.5 text-slate-400 shrink-0" />
             <span>鍵を手動追記</span>
           </button>
         </div>
       </div>
+
+      {/* Security & Health Audit Detailed View */}
+      {isAuditOpen && vault.keys.length > 0 && (
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4 space-y-3 animate-fade-in shadow-md">
+          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+            <div className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-indigo-400" />
+              <h3 className="text-xs font-semibold text-slate-200">
+                保管庫セキュリティ監査・ヘルスチェック
+              </h3>
+            </div>
+            <span
+              className={`text-xs px-2.5 py-0.5 rounded font-medium ${
+                healthScore >= 90
+                  ? 'bg-emerald-950 text-emerald-300 border border-emerald-800'
+                  : healthScore >= 70
+                  ? 'bg-amber-950 text-amber-300 border border-amber-800'
+                  : 'bg-rose-950 text-rose-300 border border-rose-800'
+              }`}
+            >
+              総合スコア: {healthScore} / 100 点 (
+              {healthScore >= 90 ? '極めて健全' : healthScore >= 70 ? '改善推奨' : '要見直し'})
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1 text-xs">
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded p-2.5">
+              <div className="text-slate-400 text-[11px]">推奨暗号鍵 (現代標準)</div>
+              <div className="text-base font-bold text-emerald-400 mt-0.5">
+                {modernKeys.length} <span className="text-[11px] font-normal text-slate-500">鍵</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">Ed25519 / RSA 2048+ / AES-GCM</div>
+            </div>
+
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded p-2.5">
+              <div className="text-slate-400 text-[11px]">脆弱な鍵長 (&lt; 2048bit)</div>
+              <div
+                className={`text-base font-bold mt-0.5 ${
+                  weakRsaKeys.length > 0 ? 'text-rose-400' : 'text-slate-400'
+                }`}
+              >
+                {weakRsaKeys.length} <span className="text-[11px] font-normal text-slate-500">件</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {weakRsaKeys.length > 0 ? '⚠️ 2048bit以上へ移行推奨' : '合格 (脆弱な鍵長なし)'}
+              </div>
+            </div>
+
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded p-2.5">
+              <div className="text-slate-400 text-[11px]">レガシー暗号 (PKCS#1 v1.5)</div>
+              <div
+                className={`text-base font-bold mt-0.5 ${
+                  legacyPkcs1Keys.length > 0 ? 'text-amber-400' : 'text-slate-400'
+                }`}
+              >
+                {legacyPkcs1Keys.length} <span className="text-[11px] font-normal text-slate-500">件</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {legacyPkcs1Keys.length > 0 ? 'RSA-OAEP / PSSを推奨' : '合格 (レガシーなし)'}
+              </div>
+            </div>
+
+            <div className="bg-slate-950/70 border border-slate-800/80 rounded p-2.5">
+              <div className="text-slate-400 text-[11px]">用途・メモ未記載</div>
+              <div
+                className={`text-base font-bold mt-0.5 ${
+                  unmemoedKeys.length > 0 ? 'text-amber-400' : 'text-slate-400'
+                }`}
+              >
+                {unmemoedKeys.length} <span className="text-[11px] font-normal text-slate-500">件</span>
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">用途不明による事故防止</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backup Status Reminder Banner */}
+      {vault.keys.length > 0 && unbackedUpKeys.length > 0 && (
+        <div className="p-3 bg-amber-950/30 border border-amber-800/70 rounded-lg flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-start sm:items-center gap-2.5 text-amber-200">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0 mt-0.5 sm:mt-0" />
+            <div>
+              <span className="font-semibold text-amber-100">
+                未バックアップの鍵が {unbackedUpKeys.length} 件あります
+              </span>
+              <span className="text-amber-300/80 ml-2">
+                (最終エクスポート:{' '}
+                {lastBackupTime ? new Date(lastBackupTime).toLocaleString('ja-JP') : '未実施'})
+              </span>
+              <p className="text-[11px] text-amber-300/70 mt-0.5">
+                ブラウザのキャッシュ消去等による消失を防ぐため、暗号化保管庫 (.encvault) に保存しておくことを推奨します。
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              setExportTargetKeyId(undefined);
+              setIsExportModalOpen(true);
+            }}
+            className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-semibold rounded-md transition-colors shadow-sm shrink-0"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>今すぐバックアップ</span>
+          </button>
+        </div>
+      )}
+
+      {/* Notification Toast */}
+      {notification && (
+        <div className="p-3 bg-emerald-950/80 border border-emerald-800 text-emerald-200 text-xs rounded-lg flex items-center justify-between shadow-sm">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>{notification}</span>
+          </div>
+          <button
+            onClick={() => setNotification(null)}
+            className="text-slate-400 hover:text-slate-200"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {/* Filter and Search Bar */}
       <div className="flex flex-col sm:flex-row gap-3">
@@ -346,6 +540,16 @@ export const KeyVaultManager: React.FC<Props> = ({
                       </>
                     ) : (
                       <>
+                        <button
+                          onClick={() => {
+                            setExportTargetKeyId(item.id);
+                            setIsExportModalOpen(true);
+                          }}
+                          className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
+                          title="この鍵をエクスポート / 保存"
+                        >
+                          <Download className="w-4 h-4" />
+                        </button>
                         <button
                           onClick={() => startEditing(item)}
                           className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
@@ -701,6 +905,32 @@ export const KeyVaultManager: React.FC<Props> = ({
           </div>
         </div>
       )}
+
+      {/* Vault Export Modal */}
+      <VaultExportModal
+        isOpen={isExportModalOpen}
+        onClose={() => {
+          setIsExportModalOpen(false);
+          setExportTargetKeyId(undefined);
+        }}
+        vault={vault}
+        initialSelectedKeyId={exportTargetKeyId}
+        onExportSuccess={(mode) => {
+          setLastBackupTime(new Date().toISOString());
+          const modeName =
+            mode === 'encrypted' ? '暗号化保管庫 (.encvault)' : mode === 'zip' ? 'ZIPアーカイブ' : 'JSON';
+          setNotification(`${modeName}のバックアップを保存しました`);
+          setTimeout(() => setNotification(null), 5000);
+        }}
+      />
+
+      {/* Vault Import Modal */}
+      <VaultImportModal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        vault={vault}
+        onVaultMerged={handleVaultMerged}
+      />
     </div>
   );
 };

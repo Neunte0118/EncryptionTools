@@ -8,12 +8,8 @@ import {
   chacha20DecryptFile,
   ChaChaVariant,
 } from '../utils/chachaUtils';
-import {
-  getChaChaLinuxCommand,
-  getChaChaPowerShellScript,
-} from '../utils/opensslInterop';
-import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
 import { FileLoaderButton } from './FileLoaderButton';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import { KeyVaultFile } from '../types/crypto';
 import { base64ToBuffer, hexToBuffer } from '../utils/cryptoUtils';
 import {
@@ -672,19 +668,11 @@ export const ChaCha20Tool: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
-      <CrossPlatformCliPanel
-        title="Linux (OpenSSL) & Windows PowerShell ChaCha20 互換コマンド"
-        defaultOpen={false}
-        linuxCommand={getChaChaLinuxCommand({
-          action,
-          variant,
-          filename: selectedFile?.name,
-          isBase64: targetType === 'text',
-        })}
-        powerShellScript={getChaChaPowerShellScript({ action, variant }).nativePowerShell}
-        powerShellCli={getChaChaPowerShellScript({ action, variant }).openSslCli}
-        note="Linux (OpenSSL 1.1.1+ / 3.x) および Windows PowerShell (.NET Core 6+ / PS 7+) で ChaCha20-Poly1305 を直接復号・暗号化可能です。"
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="@noble/ciphers"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理)"
       />
     </div>
   );

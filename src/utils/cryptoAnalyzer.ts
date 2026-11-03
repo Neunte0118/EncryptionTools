@@ -8,6 +8,8 @@ import {
   base64ToBuffer,
   bufferToBase64,
   bufferToString,
+  rsaDecrypt,
+  HashAlgorithm,
 } from './cryptoUtils';
 import { chacha20DecryptFile, chacha20DecryptWithPassword } from './chachaUtils';
 import { decryptPgpMessage, decryptPgpFile } from './pgpUtils';
@@ -18,12 +20,17 @@ import { parsePaillierPrivateKey, paillierDecrypt, FheDatasetPackage, FheAggrega
 import { inspectStegoHeader, decodeSteganography } from './steganographyUtils';
 import { extractRoundFromCiphertext } from './timelockUtils';
 import { timelockDecrypt } from 'tlock-js';
+import { isOpenSslEnc, isOpenSslEncBase64, decryptOpenSslAes } from './opensslInterop';
+import { extractEncryptedZip } from './zipUtils';
 import { KeyVaultFile } from '../types/crypto';
 
 export type DetectedCryptoType =
   | 'lcv-aes-password'
   | 'lcv-aes-raw'
   | 'lcv-hybrid-rsa'
+  | 'openssl-aes'
+  | 'encrypted-zip'
+  | 'rsa-ciphertext'
   | 'chacha20-poly1305'
   | 'self-decrypt-html'
   | 'openpgp-message'
@@ -56,6 +63,14 @@ export interface AnalyzedFile {
   metadata?: Record<string, any>;
 }
 
+export interface ExtractedFileEntry {
+  name: string;
+  size: number;
+  buffer: ArrayBuffer;
+  isText?: boolean;
+  text?: string;
+}
+
 export interface DecryptionResult {
   id: string;
   sourceFileNames: string[];
@@ -70,6 +85,7 @@ export interface DecryptionResult {
   isText?: boolean;
   isImage?: boolean;
   details?: string;
+  extractedFiles?: ExtractedFileEntry[];
 }
 
 const CHACHA_MAGIC = [0x43, 0x48, 0x41, 0x32, 0x30, 0x46, 0x49, 0x4c]; // CHA20FIL
@@ -133,7 +149,38 @@ export async function analyzeFile(file: File): Promise<AnalyzedFile> {
     }
   }
 
-  // 2. Check ChaCha20-Poly1305 file magic
+  // 2. Check OpenSSL Salted__ format
+  if (isOpenSslEnc(buffer)) {
+    return {
+      id,
+      file,
+      name: file.name,
+      size: file.size,
+      buffer,
+      detectedType: 'openssl-aes',
+      typeLabel: 'OpenSSL 暗号化ファイル (Salted__ / AES-256-CBC)',
+      isKeyOrSecret: false,
+    };
+  }
+
+  // 3. Check ZIP archive (PK\x03\x04 or PK\x05\x06)
+  if (
+    (bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B && (bytes[2] === 0x03 || bytes[2] === 0x05)) ||
+    file.name.toLowerCase().endsWith('.zip')
+  ) {
+    return {
+      id,
+      file,
+      name: file.name,
+      size: file.size,
+      buffer,
+      detectedType: 'encrypted-zip',
+      typeLabel: '暗号化ZIPアーカイブ (AES-256 / ZipCrypto)',
+      isKeyOrSecret: false,
+    };
+  }
+
+  // 4. Check ChaCha20-Poly1305 file magic
   if (bytes.length >= 36) {
     let matchChaCha = true;
     for (let i = 0; i < 8; i++) {
@@ -156,9 +203,29 @@ export async function analyzeFile(file: File): Promise<AnalyzedFile> {
     }
   }
 
-  // 3. Text-based formats (HTML self-decrypting, OpenPGP, PEM, Shamir, Age, JSON packages)
+  // 5. Text-based formats (HTML self-decrypting, OpenSSL Base64, OpenPGP, PEM, Shamir, Age, JSON packages)
   if (text) {
     const trimmed = text.trim();
+
+    // 5.0 OpenSSL Base64 (Salted__)
+    if (isOpenSslEncBase64(trimmed)) {
+      try {
+        const raw = base64ToBuffer(trimmed);
+        if (isOpenSslEnc(raw)) {
+          return {
+            id,
+            file,
+            name: file.name,
+            size: file.size,
+            buffer: raw,
+            text,
+            detectedType: 'openssl-aes',
+            typeLabel: 'OpenSSL Base64 暗号化データ (Salted__)',
+            isKeyOrSecret: false,
+          };
+        }
+      } catch {}
+    }
 
     // 3.1 Self-Decrypting Package
     if (
@@ -439,6 +506,27 @@ export async function analyzeFile(file: File): Promise<AnalyzedFile> {
     }
   }
 
+  // 6. Binary RSA Ciphertext (128, 256, 384, 512 bytes)
+  if (
+    (bytes.length === 128 || bytes.length === 256 || bytes.length === 384 || bytes.length === 512) &&
+    (file.name.endsWith('.bin') ||
+      file.name.endsWith('.rsa') ||
+      file.name.endsWith('.enc') ||
+      file.name.toLowerCase().includes('rsa') ||
+      file.name.toLowerCase().includes('cipher'))
+  ) {
+    return {
+      id,
+      file,
+      name: file.name,
+      size: file.size,
+      buffer,
+      detectedType: 'rsa-ciphertext',
+      typeLabel: `RSA 暗号文バイナリ (${bytes.length * 8}bit)`,
+      isKeyOrSecret: false,
+    };
+  }
+
   return {
     id,
     file,
@@ -446,7 +534,7 @@ export async function analyzeFile(file: File): Promise<AnalyzedFile> {
     size: file.size,
     buffer,
     detectedType: 'unknown',
-    typeLabel: 'ファイル',
+    typeLabel: file.name.endsWith('.enc') || file.name.endsWith('.bin') ? '暗号化ファイル候補' : 'ファイル',
     isKeyOrSecret: false,
   };
 }
@@ -1135,12 +1223,15 @@ export async function autoDecryptFiles(
       }
 
       if (decryptedText) {
+        const textBuf = new TextEncoder().encode(decryptedText).buffer as ArrayBuffer;
         results.push({
           id: target.id,
           sourceFileNames: [target.name],
           algorithm: 'Base64 暗号文復号',
           status: 'success',
           outputFileName: 'decrypted_text.txt',
+          outputSize: textBuf.byteLength,
+          outputBuffer: textBuf,
           outputText: decryptedText,
           isText: true,
           details: 'ChaCha20-Poly1305 パスワード復号成功',
@@ -1153,6 +1244,306 @@ export async function autoDecryptFiles(
           status: 'needs-key',
           errorMessage: '暗号化アルゴリズムに応じた復号鍵またはパスワードを入力してください',
         });
+      }
+    }
+
+    // 11. OpenSSL AES (Salted__ / AES-256-CBC PBKDF2)
+    else if (target.detectedType === 'openssl-aes') {
+      const candidatePassList = [userPass, ...candidatePasswords, ...vaultAesKeys.map((k) => k.title)].filter(Boolean);
+      let decryptedBytes: Uint8Array | null = null;
+      let lastErr = '';
+
+      for (const pass of candidatePassList) {
+        try {
+          decryptedBytes = await decryptOpenSslAes(target.buffer, pass);
+          if (decryptedBytes) break;
+        } catch (err: any) {
+          lastErr = err.message;
+        }
+      }
+
+      if (decryptedBytes) {
+        const buf = decryptedBytes.buffer.slice(
+          decryptedBytes.byteOffset,
+          decryptedBytes.byteOffset + decryptedBytes.byteLength
+        ) as ArrayBuffer;
+        let textVal: string | undefined = undefined;
+        let isTextVal = false;
+        try {
+          textVal = new TextDecoder('utf-8', { fatal: true }).decode(buf);
+          isTextVal = true;
+        } catch {}
+
+        const outName =
+          target.name.replace(/\.enc$/i, '') || (isTextVal ? 'decrypted_openssl.txt' : 'decrypted_openssl.bin');
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: 'OpenSSL AES-256-CBC (Salted__ / PBKDF2)',
+          status: 'success',
+          outputFileName: outName,
+          outputSize: buf.byteLength,
+          outputBuffer: buf,
+          outputText: textVal,
+          isText: isTextVal,
+          details: 'OpenSSL 互換暗号化フォーマットの復号完了 (Linux openssl enc / PowerShell 互換)',
+        });
+      } else {
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: 'OpenSSL AES-256-CBC (Salted__)',
+          status: 'needs-key',
+          errorMessage: lastErr || 'OpenSSL 復号パスワード (Linux / PowerShell 互換) を入力してください',
+          outputFileName: target.name.replace(/\.enc$/i, ''),
+        });
+      }
+    }
+
+    // 12. Encrypted ZIP Archive
+    else if (target.detectedType === 'encrypted-zip') {
+      const candidatePassList = ['', userPass, ...candidatePasswords, ...vaultAesKeys.map((k) => k.title)].filter(
+        (v, i, a) => a.indexOf(v) === i
+      );
+      let extracted: any[] | null = null;
+      let lastErr = '';
+
+      for (const pass of candidatePassList) {
+        try {
+          const res = await extractEncryptedZip(target.file, pass || undefined);
+          if (res && res.length > 0) {
+            extracted = res;
+            break;
+          }
+        } catch (err: any) {
+          lastErr = err.message;
+        }
+      }
+
+      if (extracted && extracted.length > 0) {
+        const fileItems = extracted.filter((e) => !e.isDirectory);
+        const extractedFiles: ExtractedFileEntry[] = [];
+
+        for (const item of fileItems) {
+          const itemBuf = await item.data.arrayBuffer();
+          let itemTxt: string | undefined = undefined;
+          let isTxt = false;
+          try {
+            itemTxt = new TextDecoder('utf-8', { fatal: true }).decode(itemBuf);
+            isTxt = true;
+          } catch {}
+          extractedFiles.push({
+            name: item.filename,
+            size: item.size || itemBuf.byteLength,
+            buffer: itemBuf,
+            isText: isTxt,
+            text: itemTxt,
+          });
+        }
+
+        const primary = extractedFiles[0];
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: '暗号化ZIPアーカイブ (AES-256 / ZipCrypto)',
+          status: 'success',
+          outputFileName:
+            fileItems.length === 1 && primary
+              ? primary.name
+              : target.name.replace(/\.zip$/i, '') + '_extracted.zip',
+          outputSize: fileItems.length === 1 && primary ? primary.size : target.size,
+          outputBuffer: fileItems.length === 1 && primary ? primary.buffer : target.buffer,
+          outputText: fileItems.length === 1 && primary?.isText ? primary.text : undefined,
+          isText: fileItems.length === 1 && primary ? primary.isText : false,
+          extractedFiles,
+          details: `ZIP アーカイブ内から ${fileItems.length} 個のファイルを解凍・復号完了`,
+        });
+      } else {
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: '暗号化ZIPアーカイブ',
+          status: 'needs-key',
+          errorMessage: lastErr || '暗号化ZIPの展開パスワード (AES-256 / ZipCrypto) を入力してください',
+          outputFileName: target.name.replace(/\.zip$/i, ''),
+        });
+      }
+    }
+
+    // 13. Direct RSA Ciphertext
+    else if (target.detectedType === 'rsa-ciphertext') {
+      const candidateRsaPemList: string[] = [
+        ...rsaPrivKeys.map((k) => k.text || '').filter(Boolean),
+        ...vaultRsaKeys.map((k) => k.privateKeyPem || '').filter(Boolean),
+      ];
+      if (userPass.includes('-----BEGIN PRIVATE KEY-----') || userPass.includes('-----BEGIN RSA PRIVATE KEY-----')) {
+        candidateRsaPemList.unshift(userPass);
+      }
+
+      let decryptedBuf: ArrayBuffer | null = null;
+      let lastErr = '';
+
+      for (const pem of candidateRsaPemList) {
+        for (const hash of ['SHA-256', 'SHA-512', 'SHA-384', 'SHA-1'] as const) {
+          try {
+            decryptedBuf = await rsaDecrypt(pem, hash as HashAlgorithm, target.buffer);
+            if (decryptedBuf) break;
+          } catch (err: any) {
+            lastErr = err.message;
+          }
+        }
+        if (decryptedBuf) break;
+      }
+
+      if (decryptedBuf) {
+        let textVal: string | undefined = undefined;
+        let isTextVal = false;
+        try {
+          textVal = new TextDecoder('utf-8', { fatal: true }).decode(decryptedBuf);
+          isTextVal = true;
+        } catch {}
+
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: 'RSA-OAEP 暗号文直接復号',
+          status: 'success',
+          outputFileName:
+            target.name.replace(/\.bin$|\.rsa$|\.enc$/i, '') + (isTextVal ? '_decrypted.txt' : '_decrypted.bin'),
+          outputSize: decryptedBuf.byteLength,
+          outputBuffer: decryptedBuf,
+          outputText: textVal,
+          isText: isTextVal,
+          details: 'RSA 秘密鍵による直接復号完了 (Linux/PowerShell openssl pkeyutl 互換)',
+        });
+      } else {
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: 'RSA-OAEP 暗号文直接復号',
+          status: 'needs-key',
+          errorMessage: lastErr || '受取人の RSA 秘密鍵 (PEM形式) を指定してください',
+          outputFileName: target.name.replace(/\.bin$|\.rsa$|\.enc$/i, ''),
+        });
+      }
+    }
+
+    // 14. Unknown file format - allow manual attempt
+    else if (target.detectedType === 'unknown') {
+      const candidatePassList = [userPass, ...candidatePasswords, ...vaultAesKeys.map((k) => k.title)].filter(Boolean);
+      let successResult: DecryptionResult | null = null;
+
+      if (candidatePassList.length > 0) {
+        // Try OpenSSL AES
+        for (const pass of candidatePassList) {
+          try {
+            if (isOpenSslEnc(target.buffer)) {
+              const dec = await decryptOpenSslAes(target.buffer, pass);
+              if (dec) {
+                const b = dec.buffer.slice(dec.byteOffset, dec.byteOffset + dec.byteLength) as ArrayBuffer;
+                let t: string | undefined;
+                try {
+                  t = new TextDecoder('utf-8', { fatal: true }).decode(b);
+                } catch {}
+                successResult = {
+                  id: target.id,
+                  sourceFileNames: [target.name],
+                  algorithm: 'OpenSSL AES-256-CBC (自動判別)',
+                  status: 'success',
+                  outputFileName: target.name.replace(/\.enc$/i, '') || 'decrypted_file.dat',
+                  outputSize: b.byteLength,
+                  outputBuffer: b,
+                  outputText: t,
+                  isText: !!t,
+                  details: '入力パスワードで OpenSSL AES 復号に成功しました',
+                };
+                break;
+              }
+            }
+          } catch {}
+
+          // Try LCV AES password
+          try {
+            const dec = await decryptFileAesPassword(target.buffer, pass);
+            if (dec) {
+              let t: string | undefined;
+              try {
+                t = new TextDecoder('utf-8', { fatal: true }).decode(dec.fileData);
+              } catch {}
+              successResult = {
+                id: target.id,
+                sourceFileNames: [target.name],
+                algorithm: 'AES-256-GCM (自動判別)',
+                status: 'success',
+                outputFileName: dec.filename || 'decrypted_payload.dat',
+                outputSize: dec.fileData.byteLength,
+                outputBuffer: dec.fileData,
+                outputText: t,
+                isText: !!t,
+                details: '入力パスワードで AES-256-GCM 復号に成功しました',
+              };
+              break;
+            }
+          } catch {}
+
+          // Try ChaCha20
+          try {
+            const dec = await chacha20DecryptFile(target.buffer, pass);
+            if (dec) {
+              let t: string | undefined;
+              try {
+                t = new TextDecoder('utf-8', { fatal: true }).decode(dec.fileData);
+              } catch {}
+              successResult = {
+                id: target.id,
+                sourceFileNames: [target.name],
+                algorithm: 'ChaCha20-Poly1305 (自動判別)',
+                status: 'success',
+                outputFileName: dec.fileName || 'decrypted_chacha.dat',
+                outputSize: dec.fileData.byteLength,
+                outputBuffer: dec.fileData,
+                outputText: t,
+                isText: !!t,
+                details: '入力パスワードで ChaCha20-Poly1305 復号に成功しました',
+              };
+              break;
+            }
+          } catch {}
+        }
+      }
+
+      if (successResult) {
+        results.push(successResult);
+      } else {
+        results.push({
+          id: target.id,
+          sourceFileNames: [target.name],
+          algorithm: '暗号化ファイル候補 (手動指定)',
+          status: 'needs-key',
+          errorMessage:
+            candidatePassList.length > 0
+              ? 'パスワードが一致しないか、未知の暗号化形式です。鍵を確認してください。'
+              : '復号パスワードまたは秘密鍵を入力して復号を実行してください',
+          outputFileName: target.name.replace(/\.enc$|\.bin$/i, ''),
+        });
+      }
+    }
+  }
+
+  // Final normalization: ensure every successful result has a valid outputBuffer, outputSize, and outputFileName
+  for (const r of results) {
+    if (r.status === 'success') {
+      if (!r.outputBuffer && r.outputText) {
+        r.outputBuffer = new TextEncoder().encode(r.outputText).buffer as ArrayBuffer;
+      }
+      if (r.outputBuffer && (!r.outputSize || r.outputSize === 0)) {
+        r.outputSize = r.outputBuffer.byteLength;
+      }
+      if (!r.outputFileName) {
+        const baseName = r.sourceFileNames[0]
+          ? r.sourceFileNames[0].replace(/\.enc$|\.bin$|\.asc$/i, '')
+          : 'decrypted_result';
+        r.outputFileName = r.isText ? `${baseName}.txt` : `${baseName}.bin`;
       }
     }
   }

@@ -10,6 +10,7 @@ import {
 } from '../utils/postQuantumUtils';
 import { KeyVaultFile } from '../types/crypto';
 import { FileLoaderButton } from './FileLoaderButton';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import {
   Lock,
   Unlock,
@@ -947,6 +948,13 @@ export const PostQuantumCryptoTool: React.FC<Props> = ({
           )}
         </div>
       )}
+
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="@noble/post-quantum"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理)"
+      />
     </div>
   );
 };

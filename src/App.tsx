@@ -30,6 +30,7 @@ import { AbeTool } from './components/AbeTool';
 import { AutoDecryptorTool } from './components/AutoDecryptorTool';
 import { PWAInstallButton } from './components/PWAInstallButton';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { TechnicalSpecsModal } from './components/TechnicalSpecsModal';
 import {
   FolderKey,
   FileSignature,
@@ -57,6 +58,7 @@ import {
   Cpu,
   Atom,
   Sparkles,
+  Layers,
 } from 'lucide-react';
 
 export type Category = 'vault' | 'crypto' | 'share' | 'file';
@@ -118,6 +120,7 @@ export default function App() {
     action: 'sign' | 'verify' | 'encrypt' | 'decrypt';
     key: KeyVaultItem;
   } | null>(null);
+  const [isSpecsModalOpen, setIsSpecsModalOpen] = useState(false);
 
   useEffect(() => {
     const handleWindowDragOver = (e: DragEvent) => {
@@ -327,6 +330,14 @@ export default function App() {
             </div>
 
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setIsSpecsModalOpen(true)}
+                className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition-colors"
+                title="外部ライブラリ・通信仕様一覧を表示"
+              >
+                <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">ライブラリ・通信仕様</span>
+              </button>
               <PWAInstallButton variant="header" />
               <button
                 onClick={() => handleSelectTab('vault')}
@@ -553,6 +564,12 @@ export default function App() {
           {CATEGORIES.map((cat) => renderNavGroup(cat.id, cat.label))}
         </div>
       </aside>
+
+      {/* Technical Specifications & Network Modal */}
+      <TechnicalSpecsModal
+        isOpen={isSpecsModalOpen}
+        onClose={() => setIsSpecsModalOpen(false)}
+      />
     </div>
   );
 }

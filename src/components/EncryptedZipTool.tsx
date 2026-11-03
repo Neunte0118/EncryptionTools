@@ -5,11 +5,7 @@ import {
   ZipEncryptionStrength,
   ExtractedZipItem,
 } from '../utils/zipUtils';
-import {
-  getZipLinuxCommand,
-  getZipPowerShellScript,
-} from '../utils/opensslInterop';
-import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import {
   FileArchive,
   Lock,
@@ -33,10 +29,11 @@ export const EncryptedZipTool: React.FC = () => {
 
   // Creator state
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [enableEncryption, setEnableEncryption] = useState(false);
   const [zipPassword, setZipPassword] = useState('');
   const [showZipPassword, setShowZipPassword] = useState(false);
   const [encStrength, setEncStrength] = useState<ZipEncryptionStrength>('aes-256');
-  const [zipFilename, setZipFilename] = useState('encrypted-archive.zip');
+  const [zipFilename, setZipFilename] = useState('archive.zip');
   const [isZipping, setIsZipping] = useState(false);
   const [zipProgress, setZipProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
   const [createdZipBlob, setCreatedZipBlob] = useState<Blob | null>(null);
@@ -75,7 +72,7 @@ export const EncryptedZipTool: React.FC = () => {
       return;
     }
 
-    if (!zipPassword.trim()) {
+    if (enableEncryption && !zipPassword.trim()) {
       setCreateError('暗号化保護用のパスワードを入力してください');
       return;
     }
@@ -85,13 +82,13 @@ export const EncryptedZipTool: React.FC = () => {
 
     try {
       const blob = await createEncryptedZip(selectedFiles, {
-        password: zipPassword.trim(),
-        encryptionStrength: encStrength,
+        password: enableEncryption ? zipPassword.trim() : undefined,
+        encryptionStrength: enableEncryption ? encStrength : undefined,
         onProgress: (current, total) => setZipProgress({ current, total }),
       });
       setCreatedZipBlob(blob);
     } catch (err: any) {
-      setCreateError(`ZIP暗号化エラー: ${err.message}`);
+      setCreateError(`ZIP生成エラー: ${err.message}`);
     } finally {
       setIsZipping(false);
     }
@@ -121,10 +118,14 @@ export const EncryptedZipTool: React.FC = () => {
 
     setIsExtracting(true);
     try {
-      const items = await extractEncryptedZip(extractZipFile, extractPassword || undefined);
+      const items = await extractEncryptedZip(extractZipFile, extractPassword.trim() || undefined);
       setExtractedItems(items);
     } catch (err: any) {
-      setExtractError(`解凍エラー: パスワードが一致しないか、破損しています (${err.message})`);
+      if (!extractPassword.trim()) {
+        setExtractError('このZIPファイルはパスワード暗号化されています。解凍パスワードを入力してください。');
+      } else {
+        setExtractError(`解凍エラー: パスワードが一致しないか、破損しています (${err.message})`);
+      }
     } finally {
       setIsExtracting(false);
     }
@@ -263,43 +264,106 @@ export const EncryptedZipTool: React.FC = () => {
                 </div>
               )}
 
-              {/* Password */}
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">
-                  ZIP 解凍用パスワード (必須)
+              {/* Encryption Mode Toggle */}
+              <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2.5">
+                <label className="block text-slate-300 font-semibold text-xs">
+                  ZIP アーカイブ形式
                 </label>
-                <div className="relative">
-                  <input
-                    type={showZipPassword ? 'text' : 'password'}
-                    value={zipPassword}
-                    onChange={(e) => setZipPassword(e.target.value)}
-                    placeholder="パスワードを入力してください"
-                    required
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono text-xs pr-10 focus:outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowZipPassword(!showZipPassword)}
-                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      !enableEncryption
+                        ? 'bg-indigo-950/40 border-indigo-500/80 text-indigo-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
                   >
-                    {showZipPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
+                    <input
+                      type="radio"
+                      name="zipEncMode"
+                      checked={!enableEncryption}
+                      onChange={() => setEnableEncryption(false)}
+                      className="text-indigo-600 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-semibold block text-xs">暗号化なし (標準ZIP)</span>
+                      <span className="text-[10px] text-slate-500 block">パスワード不要・即時展開可能</span>
+                    </div>
+                  </label>
+
+                  <label
+                    className={`flex items-center gap-2 p-2.5 rounded-lg border cursor-pointer transition-colors ${
+                      enableEncryption
+                        ? 'bg-indigo-950/40 border-indigo-500/80 text-indigo-200'
+                        : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="zipEncMode"
+                      checked={enableEncryption}
+                      onChange={() => setEnableEncryption(true)}
+                      className="text-indigo-600 focus:ring-0"
+                    />
+                    <div>
+                      <span className="font-semibold block text-xs">パスワード暗号化 (保護ZIP)</span>
+                      <span className="text-[10px] text-slate-500 block">AES-256 / ZipCrypto 暗号化</span>
+                    </div>
+                  </label>
                 </div>
               </div>
 
+              {/* Password (if encrypted) */}
+              {enableEncryption ? (
+                <div>
+                  <label className="block text-slate-300 font-semibold mb-1">
+                    ZIP 解凍用パスワード (必須)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showZipPassword ? 'text' : 'password'}
+                      value={zipPassword}
+                      onChange={(e) => setZipPassword(e.target.value)}
+                      placeholder="暗号化保護用のパスワードを入力してください"
+                      required={enableEncryption}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-100 font-mono text-xs pr-10 focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowZipPassword(!showZipPassword)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-200"
+                    >
+                      {showZipPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-slate-950/70 border border-slate-800/80 rounded-lg text-slate-400 text-[11px] leading-relaxed">
+                  暗号化を行わない標準のZIP形式で圧縮します。Windows・Mac・LinuxなどすべてのOSの標準機能でそのまま解凍できます。
+                </div>
+              )}
+
               {/* Algorithm & Filename */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-                <div>
-                  <label className="block text-slate-400 mb-1">暗号化方式</label>
-                  <select
-                    value={encStrength}
-                    onChange={(e) => setEncStrength(e.target.value as any)}
-                    className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
-                  >
-                    <option value="aes-256">AES-256 (強力・推奨)</option>
-                    <option value="zipcrypto">ZipCrypto (従来OS互換用)</option>
-                  </select>
-                </div>
+                {enableEncryption ? (
+                  <div>
+                    <label className="block text-slate-400 mb-1">暗号化方式</label>
+                    <select
+                      value={encStrength}
+                      onChange={(e) => setEncStrength(e.target.value as any)}
+                      className="w-full px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-200 focus:outline-none focus:border-indigo-500"
+                    >
+                      <option value="aes-256">AES-256 (強力・推奨)</option>
+                      <option value="zipcrypto">ZipCrypto (従来OS互換用)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-slate-400 mb-1">圧縮形式</label>
+                    <div className="px-3 py-2 bg-slate-950 border border-slate-800 rounded-lg text-slate-400 text-xs">
+                      標準 ZIP (Deflate 圧縮)
+                    </div>
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-slate-400 mb-1">ZIP ファイル名</label>
@@ -327,12 +391,17 @@ export const EncryptedZipTool: React.FC = () => {
                 {isZipping ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>圧縮暗号化中... ({zipProgress.current}/{zipProgress.total})</span>
+                    <span>圧縮中... ({zipProgress.current}/{zipProgress.total})</span>
                   </>
-                ) : (
+                ) : enableEncryption ? (
                   <>
                     <Lock className="w-4 h-4" />
                     <span>暗号化 ZIP を生成</span>
+                  </>
+                ) : (
+                  <>
+                    <FolderArchive className="w-4 h-4" />
+                    <span>標準 ZIP を生成 (暗号化なし)</span>
                   </>
                 )}
               </button>
@@ -343,7 +412,7 @@ export const EncryptedZipTool: React.FC = () => {
             <div className="space-y-3">
               <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2 border-b border-slate-800 pb-3">
                 <Download className="w-4 h-4 text-emerald-400" />
-                <span>生成された暗号化 ZIP</span>
+                <span>生成された ZIP アーカイブ</span>
               </h3>
 
               {createdZipBlob ? (
@@ -351,13 +420,26 @@ export const EncryptedZipTool: React.FC = () => {
                   <div className="p-4 bg-emerald-950/20 border border-emerald-900/60 rounded-xl space-y-2 text-xs">
                     <div className="flex items-center gap-2 text-emerald-300 font-semibold">
                       <Check className="w-4 h-4 text-emerald-400" />
-                      <span>暗号化 ZIP の生成が完了しました</span>
+                      <span>
+                        {enableEncryption
+                          ? '暗号化 ZIP の生成が完了しました'
+                          : '標準 ZIP (非暗号化) の生成が完了しました'}
+                      </span>
                     </div>
                     <div className="text-[11px] text-slate-300 space-y-1">
-                      <div>ファイル名: <code className="text-indigo-300 font-mono">{zipFilename}</code></div>
+                      <div>
+                        ファイル名: <code className="text-indigo-300 font-mono">{zipFilename}</code>
+                      </div>
                       <div>アーカイブサイズ: {(createdZipBlob.size / 1024).toFixed(1)} KB</div>
                       <div>格納ファイル数: {selectedFiles.length} 件</div>
-                      <div>暗号化規格: {encStrength === 'aes-256' ? 'AES-256' : 'ZipCrypto'}</div>
+                      <div>
+                        アーカイブ形式:{' '}
+                        {enableEncryption
+                          ? encStrength === 'aes-256'
+                            ? 'AES-256 暗号化'
+                            : 'ZipCrypto 暗号化'
+                          : '暗号化なし (標準 Deflate)'}
+                      </div>
                     </div>
                   </div>
 
@@ -367,7 +449,9 @@ export const EncryptedZipTool: React.FC = () => {
                     className="w-full py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center justify-center gap-2 transition-colors shadow-sm"
                   >
                     <Download className="w-4 h-4" />
-                    <span>暗号化 ZIP をダウンロード</span>
+                    <span>
+                      {enableEncryption ? '暗号化 ZIP をダウンロード' : '標準 ZIP をダウンロード'}
+                    </span>
                   </button>
                 </div>
               ) : (
@@ -518,40 +602,11 @@ export const EncryptedZipTool: React.FC = () => {
         </div>
       )}
 
-      {/* Linux & Windows PowerShell Cross-Platform Compatibility Panel */}
-      <CrossPlatformCliPanel
-        title="Linux & Windows PowerShell ZIP互換コマンド"
-        defaultOpen={false}
-        linuxCommand={getZipLinuxCommand({
-          action: activeTab,
-          filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
-          password: activeTab === 'create' ? zipPassword : extractPassword,
-          strength: encStrength,
-          files: selectedFiles.map((f) => f.name),
-        })}
-        powerShellScript={
-          getZipPowerShellScript({
-            action: activeTab,
-            filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
-            password: activeTab === 'create' ? zipPassword : extractPassword,
-            strength: encStrength,
-            files: selectedFiles.map((f) => f.name),
-          }).nativePowerShell
-        }
-        powerShellCli={
-          getZipPowerShellScript({
-            action: activeTab,
-            filename: activeTab === 'create' ? zipFilename : extractZipFile?.name,
-            password: activeTab === 'create' ? zipPassword : extractPassword,
-            strength: encStrength,
-            files: selectedFiles.map((f) => f.name),
-          }).openSslCli
-        }
-        note={
-          encStrength === 'aes-256'
-            ? 'AES-256 (WinZip AE-2規格): Linuxでは 7z x -pパスワード またはAES対応unzip、Windowsでは 7z CLI またはエクスプローラーで解凍できます。'
-            : 'ZipCrypto (標準ZIP規格): Linuxの標準 unzip および Windows標準エクスプローラーで追加ソフトなしに解凍可能です。'
-        }
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="@zip.js/zip.js"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理・外部送信なし)"
       />
     </div>
   );

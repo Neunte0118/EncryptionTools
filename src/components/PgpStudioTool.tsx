@@ -5,8 +5,9 @@ import {
   encryptPgpFile,
   decryptPgpFile,
 } from '../utils/pgpUtils';
-import { KeyVaultFile } from '../types/crypto';
+import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import { FileLoaderButton } from './FileLoaderButton';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import {
   Shield,
   Key,
@@ -557,6 +558,13 @@ export const PgpStudioTool: React.FC<Props> = ({
           )}
         </div>
       )}
+
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="openpgp (v6)"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理)"
+      />
     </div>
   );
 };

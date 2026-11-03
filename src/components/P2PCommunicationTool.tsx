@@ -12,6 +12,7 @@ import {
   HashAlgorithm,
 } from '../utils/cryptoUtils';
 import { appendKeyToVault } from '../utils/vaultStorage';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import {
   Radio,
   Wifi,
@@ -1652,6 +1653,13 @@ export const P2PCommunicationTool: React.FC<Props> = ({ vault, onVaultChange }) 
           )}
         </div>
       )}
+
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="なし (ブラウザ標準 WebRTC / BroadcastChannel API)"
+        hasNetwork={true}
+        networkDetails="通信あり (WebRTC モード時: STUN stun:stun.l.google.com によるピア直接接続 / 同一端末タブ間モードは通信なし)"
+      />
     </div>
   );
 };

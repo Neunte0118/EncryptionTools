@@ -29,6 +29,7 @@ import {
   Layers,
   Sparkles,
 } from 'lucide-react';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 
 export const TimelockCryptoTool: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'encrypt' | 'decrypt'>('encrypt');
@@ -885,6 +886,13 @@ export const TimelockCryptoTool: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="tlock-js, drand-client, @noble/curves"
+        hasNetwork={true}
+        networkDetails="通信あり: drand 分散ビーコン API (https://api.drand.sh/) への公開ラウンド取得のみ (平文・暗号文は非送信)"
+      />
     </div>
   );
 };

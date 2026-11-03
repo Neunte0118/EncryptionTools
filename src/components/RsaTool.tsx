@@ -11,12 +11,8 @@ import {
   HashAlgorithm,
   isEncryptedFile,
 } from '../utils/cryptoUtils';
-import {
-  getRsaLinuxCommand,
-  getRsaPowerShellScript,
-} from '../utils/opensslInterop';
 import { FileLoaderButton } from './FileLoaderButton';
-import { CrossPlatformCliPanel } from './CrossPlatformCliPanel';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 import { KeyVaultFile, KeyVaultItem } from '../types/crypto';
 import {
   Lock,
@@ -272,11 +268,6 @@ export const RsaTool: React.FC<Props> = ({
       setIsProcessingFile(false);
     }
   };
-
-  const psScriptObj = getRsaPowerShellScript({
-    action,
-    hashAlgo,
-  });
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
@@ -701,18 +692,11 @@ export const RsaTool: React.FC<Props> = ({
         </div>
       )}
 
-      {/* Linux (OpenSSL CLI) & PowerShell Cross-Platform Compatibility Panel */}
-      <CrossPlatformCliPanel
-        title="Linux (OpenSSL pkeyutl) & Windows PowerShell 互換コマンド"
-        defaultOpen={false}
-        linuxCommand={getRsaLinuxCommand({
-          action,
-          hashAlgo,
-          isBase64: targetType === 'text',
-        })}
-        powerShellScript={psScriptObj.nativePowerShell}
-        powerShellCli={psScriptObj.openSslCli}
-        note="PKCS#8 PEM 鍵形式および RSA-OAEP パディングは Linux の openssl pkeyutl や Windows PowerShell の .NET RSA と 100% 互換です。"
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="なし (ブラウザ標準 Web Crypto API)"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理)"
       />
     </div>
   );

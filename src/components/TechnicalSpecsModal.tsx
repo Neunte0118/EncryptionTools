@@ -130,6 +130,30 @@ export const TECHNICAL_SPECS: FeatureSpec[] = [
     networkDetails: '通信なし (100% ブラウザ内ローカル処理)',
     description: '暗号化したまま演算可能な準同型暗号および匿名リング署名。',
   },
+  {
+    category: '暗号化ツール',
+    name: 'Salsa20 / XSalsa20-Poly1305 暗号化 / 復号',
+    library: '@noble/ciphers (salsa)',
+    hasNetwork: false,
+    networkDetails: '通信なし (100% ブラウザ内ローカル処理)',
+    description: 'Daniel J. Bernstein が開発した高信頼ストリーム暗号 Salsa20 および 192-bit ノンス対応の XSalsa20-Poly1305 AEAD。',
+  },
+  {
+    category: '暗号化ツール',
+    name: 'Blowfish 暗号化 / 復号 (CBC / ECB)',
+    library: 'egoroof-blowfish',
+    hasNetwork: false,
+    networkDetails: '通信なし (100% ブラウザ内ローカル処理)',
+    description: 'Bruce Schneier が設計した 64 ビット可変長鍵 (32〜448 ビット) 対称ブロック暗号。ブラウザ内で完全ローカル処理。',
+  },
+  {
+    category: '特殊暗号',
+    name: 'フォーマット維持暗号化 (Format-Preserving Encryption: FF1)',
+    library: '@noble/ciphers (ff1)',
+    hasNetwork: false,
+    networkDetails: '通信なし (100% ブラウザ内ローカル処理)',
+    description: 'NIST SP 800-38G 規格準拠のトークナイゼーション暗号。クレジットカード番号・マイナンバー・英数字ID等の桁数・区切り文字を完全に維持したまま暗号化・復号。',
+  },
 ];
 
 export const TechnicalSpecsModal: React.FC<Props> = ({ isOpen, onClose }) => {

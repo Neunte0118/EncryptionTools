@@ -291,6 +291,57 @@ export const KeyGeneratorTool: React.FC<Props> = ({
         });
         setAppendTitle(typeLabel);
         setAppendMemo(`生成日: ${today}`);
+      } else if (keyType === 'salsa20') {
+        const bytes = new Uint8Array(32); // 256 bits
+        window.crypto.getRandomValues(bytes);
+        const b64 = bufferToBase64(bytes.buffer as ArrayBuffer);
+        const hex = bufferToHex(bytes.buffer as ArrayBuffer);
+        const typeLabel = 'Salsa20 / XSalsa20 256bit 共通鍵';
+
+        setGeneratedKeyItem({
+          type: 'salsa20',
+          title: typeLabel,
+          memo: `生成日: ${today} / Salsa20 256bit (32 bytes) 対称鍵`,
+          algorithmDetails: { name: 'SALSA20', length: 256 },
+          rawKeyBase64: b64,
+          rawKeyHex: hex,
+        });
+        setAppendTitle(typeLabel);
+        setAppendMemo(`生成日: ${today}`);
+      } else if (keyType === 'blowfish') {
+        const bytes = new Uint8Array(32); // 256 bits
+        window.crypto.getRandomValues(bytes);
+        const b64 = bufferToBase64(bytes.buffer as ArrayBuffer);
+        const hex = bufferToHex(bytes.buffer as ArrayBuffer);
+        const typeLabel = 'Blowfish 256bit 共通鍵';
+
+        setGeneratedKeyItem({
+          type: 'blowfish',
+          title: typeLabel,
+          memo: `生成日: ${today} / Blowfish 256bit (32 bytes) 対称鍵`,
+          algorithmDetails: { name: 'BLOWFISH', length: 256 },
+          rawKeyBase64: b64,
+          rawKeyHex: hex,
+        });
+        setAppendTitle(typeLabel);
+        setAppendMemo(`生成日: ${today}`);
+      } else if (keyType === 'ff1') {
+        const bytes = new Uint8Array(32); // 256 bits
+        window.crypto.getRandomValues(bytes);
+        const b64 = bufferToBase64(bytes.buffer as ArrayBuffer);
+        const hex = bufferToHex(bytes.buffer as ArrayBuffer);
+        const typeLabel = 'FF1 256bit フォーマット維持暗号鍵';
+
+        setGeneratedKeyItem({
+          type: 'ff1',
+          title: typeLabel,
+          memo: `生成日: ${today} / NIST SP 800-38G FF1 AES-256 鍵`,
+          algorithmDetails: { name: 'FF1', length: 256 },
+          rawKeyBase64: b64,
+          rawKeyHex: hex,
+        });
+        setAppendTitle(typeLabel);
+        setAppendMemo(`生成日: ${today}`);
       } else if (keyType === 'hmac') {
         const bytes = new Uint8Array(hmacLength / 8);
         window.crypto.getRandomValues(bytes);
@@ -533,7 +584,14 @@ export const KeyGeneratorTool: React.FC<Props> = ({
     }
 
     if (onSelectKeyForAction) {
-      if (targetTab === 'aes' || targetTab === 'rsa' || targetTab === 'chacha') {
+      if (
+        targetTab === 'aes' ||
+        targetTab === 'rsa' ||
+        targetTab === 'chacha' ||
+        targetTab === 'salsa' ||
+        targetTab === 'blowfish' ||
+        targetTab === 'fpe'
+      ) {
         onSelectKeyForAction('encrypt', keyToUse);
       } else if (targetTab === 'signatures') {
         onSelectKeyForAction('sign', keyToUse);
@@ -680,8 +738,15 @@ export const KeyGeneratorTool: React.FC<Props> = ({
                   <option value="aes-cbc">AES-CBC (Cipher Block Chaining - ブロック暗号)</option>
                   <option value="aes-ctr">AES-CTR (Counter Mode - ストリーム型)</option>
                 </optgroup>
-                <optgroup label="ChaCha20 / Salsa20">
+                <optgroup label="ChaCha20 / Salsa20 (ストリーム暗号)">
                   <option value="chacha20">ChaCha20 256bit 共通鍵 (RFC 8439)</option>
+                  <option value="salsa20">Salsa20 / XSalsa20 256bit 共通鍵</option>
+                </optgroup>
+                <optgroup label="Blowfish (Bruce Schneier 64bit ブロック暗号)">
+                  <option value="blowfish">Blowfish 256bit 共通鍵</option>
+                </optgroup>
+                <optgroup label="フォーマット維持暗号 (FPE / FF1 トークナイゼーション)">
+                  <option value="ff1">FF1 256bit 暗号鍵 (NIST SP 800-38G)</option>
                 </optgroup>
                 <optgroup label="HMAC メッセージ認証符号">
                   <option value="hmac">HMAC 共有シークレットキー</option>
@@ -1033,6 +1098,42 @@ export const KeyGeneratorTool: React.FC<Props> = ({
                 >
                   <Lock className="w-3.5 h-3.5" />
                   <span>暗号化ツールを開く</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {keyType === 'salsa20' && (
+                <button
+                  type="button"
+                  onClick={() => handleQuickUse('salsa')}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Salsa20 暗号化を開く</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {keyType === 'blowfish' && (
+                <button
+                  type="button"
+                  onClick={() => handleQuickUse('blowfish')}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Blowfish 暗号化を開く</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
+              )}
+
+              {keyType === 'ff1' && (
+                <button
+                  type="button"
+                  onClick={() => handleQuickUse('fpe')}
+                  className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>フォーマット維持暗号 (FF1) を開く</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}

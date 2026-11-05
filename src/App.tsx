@@ -23,6 +23,9 @@ import { PgpStudioTool } from './components/PgpStudioTool';
 import { UnifiedCompressionTool } from './components/UnifiedCompressionTool';
 import { UnifiedSteganographyTool } from './components/UnifiedSteganographyTool';
 import { ChaCha20Tool } from './components/ChaCha20Tool';
+import { Salsa20Tool } from './components/Salsa20Tool';
+import { BlowfishTool } from './components/BlowfishTool';
+import { FpeTool } from './components/FpeTool';
 import { ActionPipelinesTool } from './components/ActionPipelinesTool';
 import { RingSignatureTool } from './components/RingSignatureTool';
 import { FheTool } from './components/FheTool';
@@ -59,6 +62,7 @@ import {
   Atom,
   Sparkles,
   Layers,
+  CreditCard,
 } from 'lucide-react';
 
 export type Category = 'vault' | 'crypto' | 'share' | 'file';
@@ -71,6 +75,9 @@ export type Tab =
   | 'random'
   | 'aes'
   | 'chacha'
+  | 'salsa'
+  | 'blowfish'
+  | 'fpe'
   | 'rsa'
   | 'ecdh'
   | 'pqc'
@@ -190,6 +197,14 @@ export default function App() {
     } else if (action === 'encrypt' || action === 'decrypt') {
       if (key.type === 'aes-gcm') {
         handleSelectTab('aes');
+      } else if (key.type === 'chacha20') {
+        handleSelectTab('chacha');
+      } else if (key.type === 'salsa20') {
+        handleSelectTab('salsa');
+      } else if (key.type === 'blowfish') {
+        handleSelectTab('blowfish');
+      } else if (key.type === 'ff1') {
+        handleSelectTab('fpe');
       } else if (key.type === 'rsa-oaep') {
         handleSelectTab('rsa');
       } else if (key.type === 'ecdh') {
@@ -211,6 +226,9 @@ export default function App() {
     { id: 'auto-decrypt', title: '暗号自動解析・一括復号', icon: Sparkles, category: 'crypto' },
     { id: 'aes', title: 'AES-256 暗号化', icon: Lock, category: 'crypto' },
     { id: 'chacha', title: 'ChaCha20-Poly1305', icon: Lock, category: 'crypto' },
+    { id: 'salsa', title: 'Salsa20 / XSalsa20', icon: Lock, category: 'crypto' },
+    { id: 'blowfish', title: 'Blowfish 暗号', icon: Lock, category: 'crypto' },
+    { id: 'fpe', title: 'フォーマット維持暗号 (FF1)', icon: CreditCard, category: 'crypto' },
     { id: 'rsa', title: 'RSA-OAEP', icon: Lock, category: 'crypto' },
     { id: 'ecdh', title: 'ECDH 鍵共有', icon: Lock, category: 'crypto' },
     { id: 'pqc', title: '耐量子暗号', icon: Atom, category: 'crypto' },
@@ -427,6 +445,27 @@ export default function App() {
 
           {activeTab === 'chacha' && (
             <ChaCha20Tool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
+
+          {activeTab === 'salsa' && (
+            <Salsa20Tool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
+
+          {activeTab === 'blowfish' && (
+            <BlowfishTool
+              vault={vault}
+              onNavigateToKeyGenerator={() => handleSelectTab('generator')}
+            />
+          )}
+
+          {activeTab === 'fpe' && (
+            <FpeTool
               vault={vault}
               onNavigateToKeyGenerator={() => handleSelectTab('generator')}
             />

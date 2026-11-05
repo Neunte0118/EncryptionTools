@@ -20,7 +20,10 @@ export type KeyType =
   | 'abe-master'
   | 'abe-user'
   | 'passphrase'
-  | 'hmac';
+  | 'hmac'
+  | 'salsa20'
+  | 'blowfish'
+  | 'ff1';
 
 export interface KeyVaultItem {
   id: string;

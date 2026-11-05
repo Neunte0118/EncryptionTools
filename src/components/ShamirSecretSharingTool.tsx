@@ -30,10 +30,12 @@ import {
   RefreshCw,
   Trash2,
   Plus,
+  Minus,
   Sliders,
   Sparkles,
   Info,
 } from 'lucide-react';
+import { FeatureLibraryBadge } from './FeatureLibraryBadge';
 
 interface ShamirSecretSharingToolProps {
   vault?: KeyVaultFile;
@@ -604,53 +606,176 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
 
               {/* Threshold & Parameters Card */}
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-                <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4 text-cyan-400" />
-                  <h3 className="text-sm font-semibold text-slate-200">
-                    分散パラメータ設定 (k of n 閾値)
-                  </h3>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Key className="w-4 h-4 text-cyan-400" />
+                    <h3 className="text-sm font-semibold text-slate-200">
+                      分散パラメータ設定 (k of n 閾値)
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded font-mono">
+                    {thresholdK} of {totalSharesN}
+                  </span>
                 </div>
 
-                {/* Threshold k */}
+                {/* Quick Presets */}
                 <div className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-300 font-medium">必要閾値 (k)</span>
-                    <span className="font-mono text-cyan-400 font-bold bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded">
-                      {thresholdK} 枚で復元可能
-                    </span>
+                  <label className="text-[11px] font-medium text-slate-400 block">
+                    定番プリセットから選択:
+                  </label>
+                  <div className="flex flex-wrap gap-1.5">
+                    {[
+                      { k: 2, n: 3, label: '2 of 3 (標準)' },
+                      { k: 3, n: 5, label: '3 of 5 (推奨)' },
+                      { k: 4, n: 7, label: '4 of 7 (役員等)' },
+                      { k: 5, n: 9, label: '5 of 9 (高機密)' },
+                      { k: 2, n: 2, label: '2 of 2 (全合意)' },
+                    ].map((preset) => {
+                      const isSelected = thresholdK === preset.k && totalSharesN === preset.n;
+                      return (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            setThresholdK(preset.k);
+                            setTotalSharesN(preset.n);
+                          }}
+                          className={`px-2.5 py-1 text-xs rounded-md border font-medium transition-colors ${
+                            isSelected
+                              ? 'bg-cyan-600 text-white border-cyan-500 shadow-sm'
+                              : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:bg-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      );
+                    })}
                   </div>
-                  <input
-                    type="range"
-                    min={2}
-                    max={Math.min(20, Math.max(thresholdK, totalSharesN))}
-                    value={thresholdK}
-                    onChange={(e) => setThresholdK(parseInt(e.target.value, 10))}
-                    className="w-full accent-cyan-500 cursor-pointer"
-                  />
-                  <p className="text-[11px] text-slate-500">
-                    復元に最低限必要なシェアの枚数。これ未満では1ビットも復元できません。
-                  </p>
                 </div>
 
-                {/* Total shares n */}
-                <div className="space-y-1.5">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-slate-300 font-medium">総シェア数 (n)</span>
-                    <span className="font-mono text-cyan-400 font-bold bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded">
-                      {totalSharesN} 枚発行
-                    </span>
+                {/* Number Selectors: Threshold k & Total shares n */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  {/* Threshold k */}
+                  <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-lg space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-semibold">復元に必要な閾値 (k)</span>
+                      <span className="text-[10px] text-cyan-400 font-mono">最小 2</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setThresholdK((prev) => Math.max(2, prev - 1))}
+                        disabled={thresholdK <= 2}
+                        className="w-8 h-8 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                        title="閾値を1減らす"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+
+                      <input
+                        type="number"
+                        min={2}
+                        max={totalSharesN}
+                        value={thresholdK}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) {
+                            const clamped = Math.max(2, Math.min(val, totalSharesN));
+                            setThresholdK(clamped);
+                          }
+                        }}
+                        className="w-16 py-1.5 text-center font-mono font-bold text-sm bg-slate-900 border border-slate-700 text-cyan-300 rounded focus:outline-none focus:border-cyan-500"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setThresholdK((prev) => Math.min(totalSharesN, prev + 1))}
+                        disabled={thresholdK >= totalSharesN}
+                        className="w-8 h-8 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                        title="閾値を1増やす"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Dropdown for quick number pick */}
+                      <select
+                        value={thresholdK}
+                        onChange={(e) => setThresholdK(parseInt(e.target.value, 10))}
+                        className="flex-1 py-1.5 px-2 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded focus:outline-none focus:border-cyan-500 font-mono"
+                      >
+                        {Array.from({ length: Math.min(20, totalSharesN) - 1 }, (_, i) => i + 2).map((num) => (
+                          <option key={num} value={num}>
+                            {num} 枚
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      復元に必要な最低シェア数。これ未満では1ビットも復元できません。
+                    </p>
                   </div>
-                  <input
-                    type="range"
-                    min={thresholdK}
-                    max={20}
-                    value={totalSharesN}
-                    onChange={(e) => setTotalSharesN(parseInt(e.target.value, 10))}
-                    className="w-full accent-cyan-500 cursor-pointer"
-                  />
-                  <p className="text-[11px] text-slate-500">
-                    生成して配布する総シェア数 (各保管者に1枚ずつ手渡します)。
-                  </p>
+
+                  {/* Total shares n */}
+                  <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-lg space-y-2">
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-slate-300 font-semibold">発行する総シェア数 (n)</span>
+                      <span className="text-[10px] text-cyan-400 font-mono">k以上 (最大50)</span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setTotalSharesN((prev) => Math.max(thresholdK, prev - 1))}
+                        disabled={totalSharesN <= thresholdK}
+                        className="w-8 h-8 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                        title="総シェア数を1減らす"
+                      >
+                        <Minus className="w-3.5 h-3.5" />
+                      </button>
+
+                      <input
+                        type="number"
+                        min={thresholdK}
+                        max={50}
+                        value={totalSharesN}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) {
+                            const clamped = Math.max(thresholdK, Math.min(val, 50));
+                            setTotalSharesN(clamped);
+                          }
+                        }}
+                        className="w-16 py-1.5 text-center font-mono font-bold text-sm bg-slate-900 border border-slate-700 text-cyan-300 rounded focus:outline-none focus:border-cyan-500"
+                      />
+
+                      <button
+                        type="button"
+                        onClick={() => setTotalSharesN((prev) => Math.min(50, prev + 1))}
+                        disabled={totalSharesN >= 50}
+                        className="w-8 h-8 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                        title="総シェア数を1増やす"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+
+                      {/* Dropdown for quick number pick */}
+                      <select
+                        value={totalSharesN}
+                        onChange={(e) => setTotalSharesN(parseInt(e.target.value, 10))}
+                        className="flex-1 py-1.5 px-2 bg-slate-900 border border-slate-700 text-slate-200 text-xs rounded focus:outline-none focus:border-cyan-500 font-mono"
+                      >
+                        {Array.from({ length: 25 - thresholdK + 1 }, (_, i) => i + thresholdK).map((num) => (
+                          <option key={num} value={num}>
+                            {num} 枚
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      参加者に1枚ずつ手渡す発行枚数。
+                    </p>
+                  </div>
                 </div>
 
                 {/* Scenario Summary Box */}
@@ -1331,19 +1456,39 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
                 </p>
               </div>
 
-              {/* Slider controls */}
-              <div className="flex items-center gap-4 text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="text-slate-400">秘密 S = f(0):</span>
+              {/* Number controls */}
+              <div className="flex items-center gap-3 text-xs bg-slate-950/80 border border-slate-800 p-2 rounded-lg">
+                <span className="text-slate-300 font-medium">秘密 S = f(0):</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDemoSecret((prev) => Math.max(1, prev - 5))}
+                    className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                    title="-5"
+                  >
+                    <Minus className="w-3 h-3" />
+                  </button>
+
                   <input
-                    type="range"
-                    min={10}
-                    max={60}
+                    type="number"
+                    min={1}
+                    max={100}
                     value={demoSecret}
-                    onChange={(e) => setDemoSecret(parseInt(e.target.value, 10))}
-                    className="w-24 accent-cyan-500"
+                    onChange={(e) => {
+                      const v = parseInt(e.target.value, 10);
+                      if (!isNaN(v)) setDemoSecret(Math.max(1, Math.min(100, v)));
+                    }}
+                    className="w-14 py-1 text-center font-mono font-bold text-xs bg-slate-900 border border-slate-700 text-cyan-300 rounded focus:outline-none focus:border-cyan-500"
                   />
-                  <span className="font-mono text-cyan-300 font-bold w-6">{demoSecret}</span>
+
+                  <button
+                    type="button"
+                    onClick={() => setDemoSecret((prev) => Math.min(100, prev + 5))}
+                    className="w-6 h-6 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center border border-slate-700 transition-colors shrink-0"
+                    title="+5"
+                  >
+                    <Plus className="w-3 h-3" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -1542,6 +1687,13 @@ export const ShamirSecretSharingTool: React.FC<ShamirSecretSharingToolProps> = (
           </div>
         </div>
       )}
+
+      {/* External Library & Network Specs */}
+      <FeatureLibraryBadge
+        library="なし (自作 GF(256) ガロア体多項式演算 / QRコード生成に qrcode)"
+        hasNetwork={false}
+        networkDetails="通信なし (100% ブラウザ内ローカル処理・完全オフライン)"
+      />
     </div>
   );
 };
